@@ -1,0 +1,942 @@
+{
+  "treinos": [
+    {
+      "data": "2024-02-01",
+      "treino": "Upper Body",
+      "exercicios": [
+        {
+          "nome": "Supino com Halteres",
+          "series": [
+            {"carga": 10, "reps": 12, "intensidade": "moderado para leve"},
+            {"carga": 12, "reps": 12, "intensidade": "moderado"},
+            {"carga": 14, "reps": 12, "intensidade": "pesado"}
+          ]
+        },
+        {
+          "nome": "Crossover na Polia Baixa",
+          "series": [
+            {"carga": 10, "reps": 12, "intensidade": "leve"},
+            {"carga": 12, "reps": 12, "intensidade": "moderado"},
+            {"carga": 12, "reps": 14, "intensidade": "falha"}
+          ]
+        },
+        {
+          "nome": "Barra Fixa",
+          "series": [
+            {"reps": 10, "intensidade": "controle perdido na 8ª rep"},
+            {"reps": 9, "intensidade": "quase falha na 9ª"},
+            {"reps": 7, "intensidade": "falha total"}
+          ]
+        },
+        {
+          "nome": "Remada Baixa na Polia",
+          "series": [
+            {"carga": 10, "reps": 12, "intensidade": "leve"},
+            {"carga": 20, "reps": 12, "intensidade": "moderado para leve"},
+            {"carga": 40, "reps": 12, "intensidade": "carga ideal"}
+          ]
+        },
+        {
+          "nome": "Desenvolvimento com Halteres",
+          "series": [
+            {"carga": 6, "reps": 12, "intensidade": "moderado"},
+            {"carga": 7, "reps": 10, "intensidade": "pesado"},
+            {"carga": 8, "reps": 14, "intensidade": "falha"}
+          ]
+        },
+        {
+          "nome": "Elevação Lateral",
+          "series": [
+            {"carga": 5, "reps": 10, "intensidade": "leve"},
+            {"carga": 6, "reps": 12, "intensidade": "moderado"},
+            {"carga": 6, "reps": 15, "intensidade": "falha"}
+          ]
+        },
+        {
+          "nome": "Rosca Direta com Barra W",
+          "series": [
+            {"carga": 6, "reps": 12, "intensidade": "moderado"},
+            {"carga": 10, "reps": 11, "intensidade": "quase falha"},
+            {"carga": 10, "reps": 12, "intensidade": "falha"}
+          ]
+        },
+        {
+          "nome": "Rosca Martelo",
+          "series": [
+            {"carga": 5, "reps": 12, "intensidade": "leve"},
+            {"carga": 6, "reps": 12, "intensidade": "moderado"},
+            {"carga": 6, "reps": 12, "intensidade": "falha"}
+          ]
+        },
+        {
+          "nome": "Tríceps na Corda (Polia Alta)",
+          "series": [
+            {"carga": 15, "reps": 11, "intensidade": "moderado"},
+            {"carga": 20, "reps": 12, "intensidade": "carga bem ajustada"},
+            {"carga": 10, "reps": 15, "intensidade": "unilateral"}
+          ]
+        }
+      ]
+    },
+    {
+      "data": "2024-02-02",
+      "treino": "Lower Body",
+      "observacao": "DUPLICADO - mesmo treino em dois arquivos diferentes",
+      "exercicios": [
+        {
+          "nome": "Agachamento Livre",
+          "series": [
+            {"carga": 10, "reps": 12, "intensidade": "leve (aquecimento)"},
+            {"carga": 20, "reps": 12, "intensidade": "moderado para leve"},
+            {"carga": 30, "reps": 12, "intensidade": "moderado"},
+            {"carga": 30, "reps": 12, "intensidade": "moderado, falha estimada no 15"}
+          ]
+        },
+        {
+          "nome": "Leg Press 45°",
+          "series": [
+            {"carga": 90, "reps": 11, "intensidade": "câimbra no pé na 12ª rep"},
+            {"carga": 90, "reps": 11, "intensidade": "leve câimbra, mas concluído"},
+            {"carga": 100, "reps": 9, "intensidade": "poderia chegar a 12 reps"},
+            {"carga": "PULADO", "reps": 0, "intensidade": "Câimbra forte, optou por não forçar"}
+          ]
+        },
+        {
+          "nome": "Cadeira Extensora",
+          "series": [
+            {"carga": 15, "reps": 12, "intensidade": "queimando muito"},
+            {"carga": 20, "reps": 12, "intensidade": "segurando no topo"},
+            {"carga": 30, "reps": 12, "intensidade": "máximo de tempo no topo (~3s)"}
+          ]
+        },
+        {
+          "nome": "Mesa Flexora",
+          "series": [
+            {"carga": 40, "reps": 12, "intensidade": "moderado, pouca conexão"},
+            {"carga": 50, "reps": 10, "intensidade": "controle total, queimação intensa"},
+            {"carga": 50, "reps": 12, "intensidade": "queimando até o máximo"}
+          ]
+        },
+        {
+          "nome": "Stiff com Halteres",
+          "series": [
+            {"carga": 10, "reps": 12, "intensidade": "execução controlada"},
+            {"carga": 15, "reps": 12, "intensidade": "posteriores já fatigados"},
+            {"carga": 17, "reps": 10, "intensidade": "panturrilha ativando, execução pode ter saído um pouco"}
+          ]
+        },
+        {
+          "nome": "Panturrilha no Smith Machine",
+          "series": [
+            {"carga": 10, "reps": 20, "intensidade": "lento, queimando a partir da 18ª"},
+            {"carga": 15, "reps": 15, "intensidade": "segurando no topo por ~5s"},
+            {"carga": 20, "reps": 16, "intensidade": "fritando no final, 22 reps no total"}
+          ]
+        }
+      ]
+    },
+    {
+      "data": "2025-02-04",
+      "treino": "Full Body B",
+      "exercicios": [
+        {
+          "nome": "Peck Deck (Máquina Peitoral)",
+          "series": [
+            {"carga": 50, "reps": 12},
+            {"carga": 50, "reps": 12, "falha_estimada": 14},
+            {"carga": 50, "reps": 12, "falha_total": true}
+          ]
+        },
+        {
+          "nome": "Remada Máquina com Peito Apoiado",
+          "series": [
+            {"carga": 10, "reps": 12},
+            {"carga": 20, "reps": 12},
+            {"carga": 25, "reps": 12, "falha_estimada": 14}
+          ]
+        },
+        {
+          "nome": "Leg Press",
+          "series": [
+            {"carga": 40, "reps": 12},
+            {"carga": 50, "reps": 12},
+            {"carga": 60, "reps": 12, "falha_estimada": 14}
+          ]
+        },
+        {
+          "nome": "Desenvolvimento Máquina (Ombros)",
+          "series": [
+            {"carga": 5, "reps": 12},
+            {"carga": 10, "reps": 12, "falha_estimada": 15},
+            {"carga": 13, "reps": 11, "falha_total": true}
+          ]
+        },
+        {
+          "nome": "Rosca Martelo Banco Inclinado",
+          "series": [
+            {"carga": 5, "reps": 12},
+            {"carga": 6, "reps": 12},
+            {"carga": 7, "reps": 15, "drop_set": "descida controlada até a falha"}
+          ]
+        },
+        {
+          "nome": "Extensão de Tríceps na Polia",
+          "series": [
+            {"carga": 20, "reps": 12},
+            {"carga": 30, "reps": 12},
+            {"carga": 30, "reps": 10}
+          ]
+        },
+        {
+          "nome": "Panturrilha (Gêmeos)",
+          "series": [
+            {"carga": 10, "reps": 15},
+            {"carga": 10, "reps": 10}
+          ]
+        }
+      ]
+    },
+    {
+      "data": "2025-02-06",
+      "treino": "Full Body A",
+      "exercicios": [
+        {
+          "nome": "Supino com Halteres",
+          "series": [
+            {"carga": 12, "reps": 12},
+            {"carga": 14, "reps": 12},
+            {"carga": 16, "reps": 12}
+          ]
+        },
+        {
+          "nome": "Pull-Up (Barra Fixa)",
+          "series": [
+            {"carga": 6, "reps": 10, "observacao": "peso extra"},
+            {"carga": 6, "reps": 10, "observacao": "peso extra"},
+            {"reps": 13, "observacao": "peso corporal"}
+          ]
+        },
+        {
+          "nome": "Agachamento Livre",
+          "series": [
+            {"carga": 15, "reps": 12},
+            {"carga": 18, "reps": 10},
+            {"carga": 20, "reps": 12}
+          ]
+        },
+        {
+          "nome": "Elevação Lateral no Banco",
+          "series": [
+            {"carga": 6, "reps": 12},
+            {"carga": 7, "reps": 12},
+            {"carga": 8, "reps": 10}
+          ]
+        },
+        {
+          "nome": "Rosca no Banco Inclinado",
+          "series": [
+            {"carga": 6, "reps": 12},
+            {"carga": 7, "reps": 12},
+            {"carga": 8, "reps": 12}
+          ]
+        },
+        {
+          "nome": "Mergulho na Paralela",
+          "series": [
+            {"reps": 12, "observacao": "peso corporal"},
+            {"carga": 2, "reps": "8-10", "observacao": "2kg cada lado + 4 reps sem peso"}
+          ]
+        },
+        {
+          "nome": "Antebraço (Rosca Inversa + Acelerar Moto)",
+          "series": [
+            {"carga": 5, "reps": 10, "observacao": "+ aceleração"},
+            {"carga": 5, "reps": 10, "observacao": "+ aceleração"}
+          ]
+        }
+      ]
+    },
+    {
+      "data": "2025-02-10",
+      "treino": "Full Body A",
+      "exercicios": [
+        {
+          "nome": "Supino com Halteres",
+          "series": [
+            {"carga": 16, "reps": 12},
+            {"carga": 16, "reps": 10},
+            {"carga": 16, "reps": 10, "observacao": "falha total"}
+          ]
+        },
+        {
+          "nome": "Pull-Up (Barra Fixa)",
+          "series": [
+            {"carga": 6, "reps": 10, "observacao": "peso extra"},
+            {"carga": 6, "reps": 10, "observacao": "peso extra"},
+            {"reps": 13, "observacao": "peso corporal (falha)"}
+          ]
+        },
+        {
+          "nome": "Agachamento Livre",
+          "series": [
+            {"carga": 15, "reps": 12},
+            {"carga": 18, "reps": 10},
+            {"carga": 20, "reps": 12, "observacao": "falha"}
+          ]
+        },
+        {
+          "nome": "Elevação Lateral no Banco",
+          "series": [
+            {"carga": 6, "reps": 12},
+            {"carga": 7, "reps": 12},
+            {"carga": 8, "reps": 10}
+          ]
+        },
+        {
+          "nome": "Rosca Martelo no Banco Inclinado",
+          "series": [
+            {"carga": 6, "reps": 12},
+            {"carga": 7, "reps": 12},
+            {"carga": 8, "reps": 12}
+          ]
+        },
+        {
+          "nome": "Mergulho na Paralela",
+          "series": [
+            {"reps": 12, "observacao": "peso corporal"},
+            {"carga": 2, "reps": "8-10", "observacao": "2kg cada lado + 4 reps sem peso"}
+          ]
+        },
+        {
+          "nome": "Antebraço (Rosca Inversa + Acelerar Moto)",
+          "series": [
+            {"carga": 5, "reps": 10, "observacao": "+ aceleração"},
+            {"carga": 5, "reps": 10, "observacao": "+ aceleração"}
+          ]
+        }
+      ]
+    },
+    {
+      "data": "2025-02-11",
+      "treino": "Full Body B",
+      "observacao": "TEMPLATE - sem dados reais de carga/reps",
+      "exercicios": [
+        {
+          "nome": "Supino Inclinado com Halteres",
+          "series": 3,
+          "reps": ["A DEFINIR"]
+        },
+        {
+          "nome": "Remada Baixa ou Máquina com Peito Apoiado",
+          "series": 3,
+          "reps": ["A DEFINIR"]
+        },
+        {
+          "nome": "Leg Press ou Afundo",
+          "series": 3,
+          "reps": ["A DEFINIR"]
+        },
+        {
+          "nome": "Desenvolvimento Sentado com Halteres ou Máquina",
+          "series": 2,
+          "reps": ["A DEFINIR"]
+        },
+        {
+          "nome": "Rosca Martelo ou Scott",
+          "series": 2,
+          "reps": ["A DEFINIR"]
+        },
+        {
+          "nome": "Extensão de Tríceps na Polia (Corda ou Unilateral)",
+          "series": 2,
+          "reps": ["A DEFINIR"]
+        },
+        {
+          "nome": "Panturrilha (Smith ou Leg Press)",
+          "series": 2,
+          "reps": ["A DEFINIR"]
+        }
+      ]
+    },
+    {
+      "data": "2025-06-16",
+      "treino": "Força/Volume",
+      "exercicios": [
+        {
+          "nome": "Supino Reto",
+          "series": [
+            {"placas_lado_kg": 15, "reps": 6, "RIR": 3},
+            {"placas_lado_kg": 18, "reps": 6, "RIR": 2},
+            {"placas_lado_kg": 19, "reps": 6, "RIR": 0}
+          ]
+        },
+        {
+          "nome": "Agachamento",
+          "series": [
+            {"placas_lado_kg": 20, "reps": 5, "RIR": 4},
+            {"placas_lado_kg": 25, "reps": 5, "RIR": 1},
+            {"placas_lado_kg": 25, "reps": 6, "RIR": 0.5}
+          ]
+        },
+        {
+          "nome": "Barra Fixa",
+          "series": [
+            {"peso_extra_kg": 20, "reps": 5, "RIR": 1},
+            {"peso_extra_kg": 15, "reps": 6, "RIR": 2},
+            {"peso_extra_kg": 20, "reps": 6, "RIR": 0}
+          ]
+        },
+        {
+          "nome": "Desenvolvimento",
+          "series": [
+            {"placas_lado_kg": 20, "reps": 8, "RIR": 1},
+            {"placas_lado_kg": 15, "reps": 8, "RIR": 3},
+            {"placas_lado_kg": 15, "reps": 8, "RIR": 3}
+          ]
+        },
+        {
+          "nome": "Panturrilha Em Pé",
+          "series": [
+            {"peso_extra_kg": 20, "reps": 18, "RIR": 0},
+            {"peso_extra_kg": 20, "reps": 18, "RIR": 0},
+            {"peso_extra_kg": 20, "reps": 18, "RIR": 0}
+          ]
+        },
+        {
+          "nome": "Prancha Carregada",
+          "series": [
+            {"peso_extra_kg": 20, "tempo_seg": 60}
+          ]
+        }
+      ]
+    },
+    {
+      "data": "2025-06-18",
+      "treino": "Volume/Acessórios",
+      "exercicios": [
+        {
+          "nome": "RDL",
+          "series": [
+            {"placas_lado_kg": 20, "reps": 6, "RIR": 4, "observacao": "aquecimento"},
+            {"placas_lado_kg": 22, "reps": 9, "RIR": 3, "observacao": "uma rep a mais por engano"},
+            {"placas_lado_kg": 25, "reps": 10, "RIR": 3},
+            {"placas_lado_kg": 30, "reps": 8, "RIR": 1}
+          ]
+        },
+        {
+          "nome": "Supino Inclinado Halter",
+          "series": [
+            {"halter_kg": 16, "reps": 8, "RIR": 2, "observacao": "aquecimento"},
+            {"halter_kg": 20, "reps": 6, "RIR": 2},
+            {"halter_kg": 22, "reps": 7, "RIR": 0.5},
+            {"halter_kg": 22, "reps": 7, "RIR": 0, "observacao": "última rep eternizou"}
+          ]
+        },
+        {
+          "nome": "Desenvolvimento",
+          "series": [
+            {"halter_kg": 7, "reps": 8, "observacao": "aquecimento"},
+            {"pino_kg": 10, "reps": 8, "RIR": 5, "observacao": "máquina"},
+            {"pino_kg": 15, "reps": 8, "RIR": 3, "observacao": "máquina"},
+            {"pino_kg": 20, "reps": 8, "RIR": 0, "observacao": "máquina falha"}
+          ]
+        },
+        {
+          "nome": "Remada Máquina",
+          "series": [
+            {"pino_kg": 30, "reps": 12, "RIR": 6, "observacao": "aquecimento"},
+            {"pino_kg": 40, "reps": 11, "RIR": 2},
+            {"pino_kg": 44, "reps": 12, "RIR": 0},
+            {"pino_kg": 40, "reps": 4, "RIR": 0, "observacao": "peso escorregou, drop"}
+          ]
+        },
+        {
+          "nome": "Elevação Lateral",
+          "series": [
+            {"peso_kg": 7, "reps": 15, "observacao": "drop set volta 1"},
+            {"peso_kg": 4, "reps": "falha", "observacao": "drop set volta 1"},
+            {"peso_kg": 8, "reps": 14, "observacao": "drop set volta 2"},
+            {"peso_kg": 4, "reps": "falha", "observacao": "drop set volta 2"}
+          ]
+        },
+        {
+          "nome": "Rosca Direta Barra W",
+          "series": [
+            {"placas_lado_kg": 7.5, "reps": 12, "RIR": 2.5},
+            {"placas_lado_kg": 10, "reps": 11, "RIR": 0.5},
+            {"placas_lado_kg": 10, "reps": 8, "rest_pause_reps": 3, "RIR": 0}
+          ]
+        },
+        {
+          "nome": "Tríceps Unilateral EZ",
+          "series": [
+            {"peso_kg": 15, "reps": 12, "RIR": 1, "lado": "direito"},
+            {"peso_kg": 15, "reps": 12, "RIR": 1, "lado": "esquerdo"}
+          ]
+        },
+        {
+          "nome": "Panturrilha Em Pé",
+          "series": [
+            {"peso_extra_kg": 20, "reps": 18, "RIR": 0},
+            {"peso_extra_kg": 20, "reps": 18, "RIR": 0},
+            {"peso_extra_kg": 20, "reps": 18, "RIR": 0}
+          ]
+        }
+      ]
+    },
+    {
+      "data": "2025-06-21",
+      "treino": "Força",
+      "exercicios": [
+        {
+          "nome": "Supino Reto",
+          "series": [
+            {"placas_lado_kg": 20, "reps": 5, "RIR": 1},
+            {"placas_lado_kg": 20, "reps": 5, "RIR": 1},
+            {"placas_lado_kg": 21, "reps": 6, "RIR": 0}
+          ]
+        },
+        {
+          "nome": "Agachamento",
+          "series": [
+            {"placas_lado_kg": 20, "reps": 5, "RIR": 4},
+            {"placas_lado_kg": 25, "reps": 5, "RIR": 1},
+            {"placas_lado_kg": 25, "reps": 5, "RIR": 1}
+          ]
+        },
+        {
+          "nome": "Barra Fixa",
+          "series": [
+            {"peso_extra_kg": 20, "reps": 5, "RIR": 3},
+            {"peso_extra_kg": 30, "reps": 3, "RIR": 0.5}
+          ]
+        },
+        {
+          "nome": "Rosca Halter",
+          "series": [
+            {"halter_kg": 8, "reps": 10, "RIR": 0},
+            {"halter_kg": 8, "reps": 11, "RIR": 0},
+            {"halter_kg": 8, "reps": 10, "RIR": 0}
+          ]
+        }
+      ]
+    },
+    {
+      "data": "2025-06-23",
+      "treino": "Acessórios",
+      "exercicios": [
+        {
+          "nome": "Tríceps Unilateral EZ",
+          "series": [
+            {"peso_kg": 15, "reps": 10, "RIR": 3}
+          ]
+        },
+        {
+          "nome": "Paralelas",
+          "series": [
+            {"peso_extra_kg": 20, "reps": 8, "RIR": 2},
+            {"peso_extra_kg": 20, "reps": 6, "RIR": 1}
+          ]
+        }
+      ]
+    },
+    {
+      "data": "2025-06-24",
+      "treino": "Volume Completo",
+      "exercicios": [
+        {
+          "nome": "RDL",
+          "series": [
+            {"placas_lado_kg": 20, "reps": 8, "observacao": "aquecimento"},
+            {"placas_lado_kg": 30, "reps": 8, "observacao": "aquecimento"},
+            {"placas_lado_kg": 45, "reps": 8, "RIR": 2},
+            {"placas_lado_kg": 45, "reps": 8, "RIR": 2},
+            {"placas_lado_kg": 45, "reps": 8, "RIR": 2}
+          ]
+        },
+        {
+          "nome": "Supino Inclinado Halter",
+          "series": [
+            {"halter_kg": 16, "reps": 10, "observacao": "aquecimento"},
+            {"halter_kg": 22, "reps": 8, "RIR": 1.5},
+            {"halter_kg": 22, "reps": 8, "RIR": 1.5},
+            {"halter_kg": 22, "reps": 8, "RIR": 1.5}
+          ]
+        },
+        {
+          "nome": "Desenvolvimento",
+          "series": [
+            {"placas_lado_kg": 20, "reps": 8, "RIR": 1},
+            {"placas_lado_kg": 20, "reps": 8, "RIR": 1},
+            {"placas_lado_kg": 20, "reps": 8, "RIR": 1}
+          ]
+        },
+        {
+          "nome": "Remada Baixa",
+          "series": [
+            {"pino_kg": 45, "reps": 10, "RIR": 2},
+            {"pino_kg": 45, "reps": 10, "RIR": 2},
+            {"pino_kg": 45, "reps": 10, "RIR": 1}
+          ]
+        },
+        {
+          "nome": "Elevação Lateral",
+          "series": [
+            {"peso_kg": 8, "reps": 12, "observacao": "drop volta 1"},
+            {"peso_kg": 4, "reps": "falha", "observacao": "drop volta 1"},
+            {"peso_kg": 8, "reps": 10, "observacao": "drop volta 2"},
+            {"peso_kg": 4, "reps": "falha", "observacao": "drop volta 2"}
+          ]
+        },
+        {
+          "nome": "Rosca Halter",
+          "series": [
+            {"halter_kg": 8, "reps": 10, "RIR": 0},
+            {"halter_kg": 8, "reps": 10, "RIR": 0},
+            {"halter_kg": 8, "reps": 10, "RIR": 0}
+          ]
+        },
+        {
+          "nome": "Extensão Unilateral EZ",
+          "series": [
+            {"peso_kg": 17, "reps": 12, "RIR": 1},
+            {"peso_kg": 17, "reps": 12, "RIR": 1},
+            {"peso_kg": 17, "reps": 12, "RIR": 1}
+          ]
+        },
+        {
+          "nome": "Panturrilha Em Pé",
+          "series": [
+            {"peso_extra_kg": 25, "reps": 15, "RIR": 0},
+            {"peso_extra_kg": 25, "reps": 15, "RIR": 0},
+            {"peso_extra_kg": 25, "reps": 15, "rest_pause_reps": 5, "RIR": 0}
+          ]
+        },
+        {
+          "nome": "Prancha Carregada",
+          "series": [
+            {"peso_extra_kg": 10, "tempo_seg": 40},
+            {"peso_extra_kg": 10, "tempo_seg": 35}
+          ]
+        }
+      ]
+    },
+    {
+      "data": "2025-06-25",
+      "treino": "Força + Desenvolvimento",
+      "exercicios": [
+        {
+          "nome": "Agachamento",
+          "series": [
+            {"placas_lado_kg": 20, "reps": 5, "RIR": 3},
+            {"placas_lado_kg": 25, "reps": 5, "RIR": 1.5},
+            {"placas_lado_kg": 25, "reps": 5, "RIR": 0}
+          ]
+        },
+        {
+          "nome": "Supino Reto",
+          "series": [
+            {"placas_lado_kg": 20, "reps": 5, "RIR": 3},
+            {"placas_lado_kg": 22, "reps": 5, "RIR": 1.5},
+            {"placas_lado_kg": 23, "reps": 4, "RIR": 0, "observacao": "ajuda na 5ª"}
+          ]
+        },
+        {
+          "nome": "Desenvolvimento",
+          "series": [
+            {"placas_lado_kg": 15, "reps": 7, "RIR": 4},
+            {"placas_lado_kg": 20, "reps": 8, "RIR": 4},
+            {"placas_lado_kg": 25, "reps": 6, "RIR": 1},
+            {"placas_lado_kg": 30, "reps": 5, "RIR": 0}
+          ]
+        },
+        {
+          "nome": "Panturrilha Em Pé",
+          "series": [
+            {"peso_extra_kg": 20, "reps": 15, "observacao": "cãibra esquerda"},
+            {"peso_extra_kg": 25, "reps": 15, "RIR": 0},
+            {"peso_extra_kg": 25, "reps": 15, "RIR": 0}
+          ]
+        },
+        {
+          "nome": "Prancha Carregada",
+          "series": [
+            {"peso_extra_kg": 20, "tempo_seg": "até falha"},
+            {"peso_extra_kg": 20, "tempo_seg": "até falha"},
+            {"peso_extra_kg": 20, "tempo_seg": "até falha"}
+          ]
+        }
+      ]
+    },
+    {
+      "data": "2025-07-01",
+      "treino": "Volume/Acessórios",
+      "exercicios": [
+        {
+          "nome": "RDL",
+          "series": [
+            {"placas_lado_kg": 20, "reps": 6, "RIR": 4, "observacao": "aquecimento"},
+            {"placas_lado_kg": 22, "reps": 9, "RIR": 3, "observacao": "uma a mais por engano"},
+            {"placas_lado_kg": 25, "reps": 10, "RIR": 3},
+            {"placas_lado_kg": 30, "reps": 8, "RIR": 1},
+            {"placas_lado_kg": 32, "reps": 5, "RIR": 3},
+            {"placas_lado_kg": 32, "reps": 8, "RIR": 2},
+            {"placas_lado_kg": 32, "reps": 4, "observacao": "grip falhou"},
+            {"placas_lado_kg": 32, "reps": 8, "RIR": 2, "observacao": "forçou mais uma"}
+          ]
+        },
+        {
+          "nome": "Supino Inclinado Halter",
+          "series": [
+            {"halter_kg": 22, "reps": 8, "RIR": 2},
+            {"halter_kg": 22, "reps": 7, "RIR": 0, "observacao": "travou na 8ª"},
+            {"halter_kg": 20, "reps": 9, "RIR": 0, "observacao": "descida super lenta"}
+          ]
+        },
+        {
+          "nome": "Remada Baixa",
+          "series": [
+            {"pino_kg": 44, "reps": 10, "RIR": 1.5, "observacao": "últimas 2 não encostaram"},
+            {"pino_kg": 42, "reps": 10, "RIR": 3}
+          ]
+        },
+        {
+          "nome": "Elevação Lateral",
+          "series": [
+            {"peso_kg": 8, "reps": 13, "rest_pause_reps": 2, "RIR": 0},
+            {"peso_kg": 8, "reps": 13, "RIR": 1},
+            {"peso_kg": 8, "reps": 13, "observacao": "drop P1"},
+            {"peso_kg": 4, "reps": "2 roubadas", "observacao": "drop P2"}
+          ]
+        },
+        {
+          "nome": "Paralelas",
+          "series": [
+            {"peso_extra_kg": 20, "reps": 8, "RIR": 2}
+          ]
+        },
+        {
+          "nome": "Panturrilha Em Pé",
+          "series": [
+            {"peso_extra_kg": 20, "reps": 15, "RIR": 0},
+            {"peso_extra_kg": 20, "reps": 15, "RIR": 0},
+            {"peso_extra_kg": 20, "reps": 15, "rest_pause_reps": 5, "RIR": 0}
+          ]
+        },
+        {
+          "nome": "Prancha Carregada",
+          "series": [
+            {"peso_extra_kg": 10, "tempo_seg": 35},
+            {"peso_extra_kg": 10, "tempo_seg": 30}
+          ]
+        }
+      ]
+    },
+    {
+      "data": "2025-07-02",
+      "treino": "Força Completa",
+      "exercicios": [
+        {
+          "nome": "Agachamento",
+          "series": [
+            {"placas_lado_kg": 25, "reps": 5, "RIR": 2},
+            {"placas_lado_kg": 25, "reps": 5, "RIR": 3},
+            {"placas_lado_kg": 30, "reps": 5, "RIR": 1}
+          ]
+        },
+        {
+          "nome": "Supino Reto",
+          "series": [
+            {"placas_lado_kg": 10, "reps": 5, "observacao": "aquecimento"},
+            {"placas_lado_kg": 20, "reps": 5, "RIR": 3},
+            {"placas_lado_kg": 22, "reps": 5, "RIR": 1.5},
+            {"placas_lado_kg": 23, "reps": 4.5, "RIR": 0, "observacao": "ajuda na 5ª"}
+          ]
+        },
+        {
+          "nome": "Barra Fixa",
+          "series": [
+            {"peso_extra_kg": 20, "reps": 5, "RIR": 3, "observacao": "check"},
+            {"peso_extra_kg": 25, "reps": 6, "RIR": 0},
+            {"peso_extra_kg": 22, "reps": 5, "RIR": 0}
+          ]
+        },
+        {
+          "nome": "Desenvolvimento",
+          "series": [
+            {"placas_lado_kg": 22, "reps": 7, "RIR": 2},
+            {"placas_lado_kg": 22, "reps": 6, "RIR": 2},
+            {"placas_lado_kg": 22, "reps": 6, "RIR": 2}
+          ]
+        },
+        {
+          "nome": "Panturrilha Em Pé",
+          "series": [
+            {"peso_extra_kg": 25, "reps": 15, "RIR": 0},
+            {"peso_extra_kg": 25, "reps": 15, "rest_pause_reps": 6, "RIR": 0}
+          ]
+        },
+        {
+          "nome": "Prancha Carregada",
+          "series": [
+            {"peso_extra_kg": 10, "tempo_seg": 40},
+            {"peso_extra_kg": 10, "tempo_seg": 35}
+          ]
+        }
+      ]
+    },
+    {
+      "data": "2025-07-07",
+      "treino": "Volume",
+      "exercicios": [
+        {
+          "nome": "RDL",
+          "series": [
+            {"placas_lado_kg": 35, "reps": 8, "RIR": 2},
+            {"placas_lado_kg": 35, "reps": 8, "RIR": 3, "observacao": "grip cansou, execução difícil"},
+            {"placas_lado_kg": 35, "reps": 8, "RIR": 2, "pegada": "mista", "observacao": "tensão lombar esquerda"}
+          ]
+        },
+        {
+          "nome": "Supino Inclinado",
+          "series": [
+            {"halter_kg": 22, "reps": 6, "RIR": 1},
+            {"halter_kg": 20, "reps": 8, "RIR": 1}
+          ]
+        },
+        {
+          "nome": "Remada Baixa",
+          "series": [
+            {"pino_kg": 44, "reps": 10, "RIR": 1.5, "observacao": "rom curto nas 2 últimas"},
+            {"pino_kg": 42, "reps": 10, "RIR": 3, "observacao": "forma perfeita"}
+          ]
+        },
+        {
+          "nome": "Elevação Lateral",
+          "series": [
+            {"peso_kg": 8, "reps": 15, "RIR": 2},
+            {"peso_kg": 8, "reps": 15, "RIR": 2, "observacao": "1 mini rest-pause no 14º"}
+          ]
+        },
+        {
+          "nome": "Paralelas",
+          "series": [
+            {"peso_extra_kg": 20, "reps": 8, "RIR": 2},
+            {"peso_extra_kg": 20, "reps": 7, "RIR": 1}
+          ]
+        },
+        {
+          "nome": "Panturrilha Em Pé",
+          "series": [
+            {"peso_extra_kg": 20, "reps": 15, "RIR": 0},
+            {"peso_extra_kg": 20, "reps": 15, "RIR": 0},
+            {"peso_extra_kg": 20, "reps": 15, "rest_pause_reps": 5, "RIR": 0}
+          ]
+        }
+      ]
+    },
+    {
+      "data": "2025-07-14",
+      "treino": "Força",
+      "exercicios": [
+        {
+          "nome": "Supino Reto",
+          "series": [
+            {"placas_lado_kg": 22, "reps": 4, "RIR": 0, "observacao": "travaria na 5ª"},
+            {"placas_lado_kg": 22, "reps": 5, "RIR": 0},
+            {"placas_lado_kg": 20, "reps": 5, "RIR": 1}
+          ]
+        },
+        {
+          "nome": "Desenvolvimento",
+          "series": [
+            {"placas_lado_kg": 20, "reps": 8, "RIR": 1},
+            {"placas_lado_kg": 20, "reps": 8, "RIR": 1},
+            {"placas_lado_kg": 20, "reps": 8, "RIR": 1, "observacao": "série 3 mencionada"}
+          ]
+        },
+        {
+          "nome": "Barra Fixa",
+          "series": [
+            {"peso_extra_kg": 20, "reps": 6, "RIR": 2},
+            {"peso_extra_kg": 25, "reps": 5, "RIR": 1}
+          ]
+        }
+      ]
+    },
+    {
+  "data": "2025-08-18",
+  "treino": "Upper Power",
+  "horario_inicio": "20:30",
+  "exercicios": [
+    {
+      "nome": "Supino Inclinado 30°",
+      "series": [
+        {"halter_kg": 10, "reps": 8, "observacao": "aquecimento"},
+        {"halter_kg": 20, "reps": 5, "RIR": 1, "observacao": "exec lenta controlada"},
+        {"halter_kg": 20, "reps": 5, "RIR": 0, "observacao": "quase falha na 4ª"},
+        {"halter_kg": 15, "reps": 10, "drop_set": "+3 forçadas", "RIR": 0}
+      ]
+    },
+    {
+      "nome": "Barra Fixa",
+      "series": [
+        {"peso_corporal": true, "reps": 10, "observacao": "aquecimento"},
+        {"peso_extra_kg": 20, "reps": 6, "RIR": 1},
+        {"peso_extra_kg": 25, "reps": 5, "RIR": 0, "observacao": "grind 6seg na última"}
+      ]
+    },
+    {
+      "nome": "Desenvolvimento Militar",
+      "series": [
+        {"halter_kg": 15, "reps": 8, "RIR": 1.5}
+      ],
+      "observacao": "incompleto - academia fechando"
+    }
+  ],
+  "observacoes": "Treino cortado - academia fechando 21h30. Intensidade alta no supino com drop set + forçadas"
+},
+{
+  "data": "2025-08-23",
+  "treino": "Push",
+  "horario_inicio": "12:25",
+  "horario_fim": "13:06",
+  "exercicios": [
+    {
+      "nome": "Supino Inclinado Halteres",
+      "series": [
+        {"halter_kg": 10, "reps": 10, "observacao": "aquecimento"},
+        {"halter_kg": 15, "reps": 8, "RIR": 3},
+        {"halter_kg": 20, "reps": 8, "RIR": 2},
+        {"halter_kg": 22, "reps": 6, "RIR": 1, "observacao": "45s descanso"}
+      ]
+    },
+    {
+      "nome": "Paralelas",
+      "series": [
+        {"peso_extra_kg": 25, "reps": 6, "RIR": 1, "observacao": "confundiu anilha"},
+        {"peso_extra_kg": 20, "reps": 9, "RIR": 1},
+        {"peso_extra_kg": 20, "reps": 6, "drop_set": "PC x10", "RIR": 0}
+      ]
+    },
+    {
+      "nome": "Desenvolvimento Halteres",
+      "series": [
+        {"halter_kg": 12, "reps": 8, "RIR": 3},
+        {"halter_kg": 12, "reps": 10, "RIR": 2},
+        {"halter_kg": 14, "reps": 6, "RIR": 0}
+      ]
+    },
+    {
+      "nome": "Peck Deck",
+      "series": [
+        {"carga_kg": 60, "reps": 8, "RIR": 2},
+        {"carga_kg": 50, "reps": 12, "RIR": 2}
+      ],
+      "observacao": "incompleto - falta de tempo"
+    }
+  ],
+  "observacoes": "Treino cortado por falta de tempo. Faltou: Lateral, Tríceps e Face Pull"
+}
+  ]
+}
