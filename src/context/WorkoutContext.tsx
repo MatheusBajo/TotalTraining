@@ -1,128 +1,424 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { treinos } from '../data/treinos.json';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { SetType } from '../components/SetTypeModal';
+import {
+    createExercise,
+    createSet,
+    updateSet as updateSetDb,
+    finishWorkout as finishWorkoutDb,
+    deleteWorkout,
+    getLastPerformance,
+    createWorkoutBatch,
+    getLastPerformanceBatch,
+    getPRsBatch,
+    SetPR,
+} from '../api';
+
+// Helper para pegar data/hora local (não UTC)
+const getLocalDateTime = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+
+    return {
+        date: `${year}-${month}-${day}`,
+        datetime: `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`,
+    };
+};
 
 interface WorkoutSet {
     id: string;
+    dbId?: number;          // ID no banco de dados
     kg: string;
     reps: string;
     rir: string;
     completed: boolean;
     type: SetType;
     prev: string;
+    prData?: {              // PR data para esta série
+        weight: number;
+        reps: number;
+        rir: number | null;
+    };
+    targetReps?: string;    // Reps do plano (placeholder)
+    targetRir?: string;     // RIR do plano (placeholder)
+    notes?: string;
 }
 
 interface WorkoutExercise {
     id: string;
+    dbId?: number;          // ID no banco de dados
     name: string;
     sets: WorkoutSet[];
+    notes?: string;
 }
 
 interface WorkoutContextData {
     isActive: boolean;
     isMinimized: boolean;
     workoutName: string;
+    workoutId: number | null;  // ID do treino no banco
     duration: number;
     exercises: WorkoutExercise[];
-    startWorkout: (template?: any) => void;
+    // Modal de treino ativo
+    showActiveModal: boolean;
+    pendingTemplate: any | null;
+    requestStartWorkout: (template?: any) => void;  // Mostra modal se treino ativo
+    confirmStartNew: () => Promise<void>;           // Cancela atual e inicia novo
+    resumeWorkout: () => void;                      // Retoma treino atual
+    dismissModal: () => void;                       // Fecha modal
+    startWorkout: (template?: any) => Promise<void>;
     minimizeWorkout: () => void;
     maximizeWorkout: () => void;
-    finishWorkout: () => void;
-    cancelWorkout: () => void;
-    addSet: (exerciseId: string) => void;
+    finishWorkout: () => Promise<void>;
+    cancelWorkout: () => Promise<void>;
+    addExercise: (exerciseName: string, numSets?: number) => Promise<void>;
+    addSet: (exerciseId: string) => Promise<void>;
     updateSet: (exerciseId: string, setId: string, field: 'kg' | 'reps' | 'rir', value: string) => void;
-    toggleSet: (exerciseId: string, setId: string) => void;
-    changeSetType: (exerciseId: string, setId: string, type: SetType) => void;
+    toggleSet: (exerciseId: string, setId: string) => Promise<void>;
+    changeSetType: (exerciseId: string, setId: string, type: SetType) => Promise<void>;
 }
 
 const WorkoutContext = createContext<WorkoutContextData>({} as WorkoutContextData);
+
+// Converte SetType da UI para o banco
+function mapSetTypeToDb(type: SetType): string {
+    return type || 'N';
+}
 
 export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => {
     const [isActive, setIsActive] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
     const [workoutName, setWorkoutName] = useState('');
+    const [workoutId, setWorkoutId] = useState<number | null>(null);
     const [duration, setDuration] = useState(0);
     const [exercises, setExercises] = useState<WorkoutExercise[]>([]);
 
+    // Estado do modal de treino ativo
+    const [showActiveModal, setShowActiveModal] = useState(false);
+    const [pendingTemplate, setPendingTemplate] = useState<any | null>(null);
+
+    // Referência para debounce de updates
+    const updateTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
+
+    // Timestamp de quando o treino começou (para calcular duração real)
+    const startedAtRef = useRef<number | null>(null);
+
+    // Flag para evitar criar treino duplicado enquanto um está sendo criado
+    const isCreatingWorkoutRef = useRef(false);
+
+    // Atualiza duration baseado no timestamp real (funciona mesmo em background)
+    const updateDuration = useCallback(() => {
+        if (startedAtRef.current) {
+            const elapsed = Math.floor((Date.now() - startedAtRef.current) / 1000);
+            setDuration(elapsed);
+        }
+    }, []);
+
+    // Timer que atualiza a UI a cada segundo
     useEffect(() => {
         let timer: NodeJS.Timeout;
         if (isActive) {
-            timer = setInterval(() => {
-                setDuration(prev => prev + 1);
-            }, 1000);
+            // Atualiza imediatamente ao ativar
+            updateDuration();
+            timer = setInterval(updateDuration, 1000);
         }
         return () => clearInterval(timer);
-    }, [isActive]);
+    }, [isActive, updateDuration]);
 
-    const getLastStats = (exerciseName: string) => {
-        for (let i = treinos.length - 1; i >= 0; i--) {
-            const workout = treinos[i];
-            const exercise = workout.exercicios.find((e: any) => e.nome === exerciseName);
-            if (exercise && exercise.series && Array.isArray(exercise.series) && exercise.series.length > 0) {
-                const lastSet = exercise.series[exercise.series.length - 1];
-                if (typeof lastSet === 'object' && lastSet !== null) {
-                    if ('carga' in lastSet && 'reps' in lastSet) return `${lastSet.carga}kg x ${lastSet.reps}`;
-                    if ('reps' in lastSet) return `${lastSet.reps} reps`;
-                }
+    // Recalcula duração quando o app volta do background
+    useEffect(() => {
+        const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+            if (nextAppState === 'active' && isActive) {
+                // App voltou ao foco - recalcula duração baseado no timestamp
+                updateDuration();
             }
+        });
+
+        return () => subscription.remove();
+    }, [isActive, updateDuration]);
+
+    // Busca última performance do exercício no banco
+    const getLastStats = async (exerciseName: string): Promise<string> => {
+        try {
+            const lastPerf = await getLastPerformance(exerciseName);
+            if (lastPerf) {
+                const weightStr = lastPerf.weight_type === 'per_side'
+                    ? `${lastPerf.weight}x2`
+                    : `${lastPerf.weight}`;
+                return `${weightStr}kg x ${lastPerf.reps}`;
+            }
+        } catch (error) {
+            console.error('[WorkoutContext] Error getting last stats:', error);
         }
         return '-';
     };
 
-    const startWorkout = (template?: any) => {
-        const initialExercises = template ? template.exercicios.map((ex: any) => ({
-            id: ex.id,
-            name: ex.nome,
-            sets: Array(typeof ex.series === 'number' ? ex.series : 3).fill(0).map(() => ({
-                id: Math.random().toString(),
-                kg: '',
-                reps: '',
-                rir: '',
-                completed: false,
-                type: 'N' as SetType,
-                prev: getLastStats(ex.nome)
-            }))
-        })) : [];
+    // Função que UI chama - mostra modal se treino ativo
+    const requestStartWorkout = (template?: any) => {
+        if (isActive) {
+            // Treino já ativo - mostra modal
+            setPendingTemplate(template || null);
+            setShowActiveModal(true);
+        } else {
+            // Nenhum treino ativo - inicia direto
+            startWorkout(template);
+        }
+    };
 
-        setWorkoutName(template?.nome || 'Quick Workout');
-        setExercises(initialExercises);
-        setDuration(0);
-        setIsActive(true);
-        setIsMinimized(false);
+    // Cancela treino atual e inicia novo
+    const confirmStartNew = async () => {
+        setShowActiveModal(false);
+        await cancelWorkout();
+        await startWorkout(pendingTemplate);
+        setPendingTemplate(null);
+    };
+
+    // Retoma treino atual (abre bottom sheet)
+    const resumeWorkout = () => {
+        setShowActiveModal(false);
+        setPendingTemplate(null);
+        maximizeWorkout();
+    };
+
+    // Fecha modal sem ação
+    const dismissModal = () => {
+        setShowActiveModal(false);
+        setPendingTemplate(null);
+    };
+
+    const startWorkout = async (template?: any) => {
+        // Impede múltiplos cliques enquanto está criando
+        if (isCreatingWorkoutRef.current) {
+            console.log('[WorkoutContext] Already creating workout, ignoring');
+            return;
+        }
+
+        isCreatingWorkoutRef.current = true;
+
+        try {
+            const { date, datetime } = getLocalDateTime();
+            const workoutNameStr = template?.nome || 'Quick Workout';
+
+            // Prepara exercícios para batch (inclui reps e rir do template)
+            const exercisesData = template?.exercicios?.map((ex: any) => ({
+                templateId: ex.id,
+                name: ex.nome,
+                numSets: typeof ex.series === 'number' ? ex.series : 3,
+                targetReps: ex.reps,   // ex: "6-8" ou "10-12"
+                targetRir: ex.rir,     // ex: 1 ou 0
+            })) || [];
+
+            // 1. Cria tudo de uma vez (1 chamada HTTP!)
+            const batchResult = await createWorkoutBatch({
+                date,
+                name: workoutNameStr,
+                template_id: template?.id,
+                started_at: datetime,
+                exercises: exercisesData,
+            });
+
+            // 2. Busca PRs por série de todos exercícios (1 chamada HTTP!)
+            const exerciseNames = exercisesData.map((e: any) => e.name);
+            const prsData = exerciseNames.length > 0
+                ? await getPRsBatch(exerciseNames)
+                : {};
+
+            // 3. Monta estado local
+            const initialExercises: WorkoutExercise[] = batchResult.exercises.map((dbEx) => {
+                const exercisePRs = prsData[dbEx.name] || [];
+
+                // Busca dados do template para este exercício
+                const templateEx = exercisesData.find((e: any) => e.templateId === dbEx.templateId);
+                const targetReps = templateEx?.targetReps?.toString() || '';
+                const targetRir = templateEx?.targetRir !== undefined ? templateEx.targetRir.toString() : '';
+
+                const sets: WorkoutSet[] = dbEx.sets.map((dbSet, setIndex) => {
+                    // Busca PR específico para esta posição de série
+                    const setPR = exercisePRs.find(pr => pr.order_index === setIndex);
+
+                    // Formata prev para exibição (mantém compatibilidade)
+                    let prevStats = '-';
+                    let prData: WorkoutSet['prData'] = undefined;
+
+                    if (setPR) {
+                        prevStats = `${setPR.weight}kg x ${setPR.reps}`;
+                        prData = {
+                            weight: setPR.weight,
+                            reps: setPR.reps,
+                            rir: setPR.rir,
+                        };
+                    }
+
+                    return {
+                        id: Math.random().toString(),
+                        dbId: dbSet.dbId,
+                        kg: '',
+                        reps: '',
+                        rir: '',
+                        completed: false,
+                        type: 'N' as SetType,
+                        prev: prevStats,
+                        prData,
+                        targetReps,
+                        targetRir,
+                    };
+                });
+
+                return {
+                    id: dbEx.templateId,
+                    dbId: dbEx.dbId,
+                    name: dbEx.name,
+                    sets,
+                };
+            });
+
+            setWorkoutId(batchResult.workoutId);
+            setWorkoutName(workoutNameStr);
+            setExercises(initialExercises);
+            setDuration(0);
+            startedAtRef.current = Date.now();
+            setIsActive(true);
+            setIsMinimized(false);
+
+            console.log(`[WorkoutContext] Started workout #${batchResult.workoutId} (batch)`);
+        } catch (error) {
+            console.error('[WorkoutContext] Error starting workout:', error);
+        } finally {
+            isCreatingWorkoutRef.current = false;
+        }
     };
 
     const minimizeWorkout = () => setIsMinimized(true);
     const maximizeWorkout = () => setIsMinimized(false);
 
-    const finishWorkout = () => {
+    const finishWorkout = async () => {
+        if (workoutId) {
+            try {
+                await finishWorkoutDb(workoutId, duration);
+                console.log(`[WorkoutContext] Finished workout #${workoutId}`);
+            } catch (error) {
+                console.error('[WorkoutContext] Error finishing workout:', error);
+            }
+        }
+
+        startedAtRef.current = null; // Limpa timestamp
         setIsActive(false);
         setIsMinimized(false);
-        // Save logic here
+        setWorkoutId(null);
     };
 
-    const cancelWorkout = () => {
+    const cancelWorkout = async () => {
+        if (workoutId) {
+            try {
+                await deleteWorkout(workoutId);
+                console.log(`[WorkoutContext] Cancelled workout #${workoutId}`);
+            } catch (error) {
+                console.error('[WorkoutContext] Error cancelling workout:', error);
+            }
+        }
+
+        startedAtRef.current = null; // Limpa timestamp
         setIsActive(false);
         setIsMinimized(false);
+        setWorkoutId(null);
     };
 
-    const addSet = (exerciseId: string) => {
-        setExercises(prev => prev.map(ex => {
-            if (ex.id !== exerciseId) return ex;
-            const lastSet = ex.sets[ex.sets.length - 1];
-            const newSet = {
+    const addExercise = async (exerciseName: string, numSets: number = 3) => {
+        if (!workoutId) return;
+
+        try {
+            const newOrderIndex = exercises.length;
+
+            // Cria exercício no banco
+            const exerciseDbId = await createExercise({
+                workout_id: workoutId,
+                exercise_name: exerciseName,
+                order_index: newOrderIndex,
+            });
+
+            // Busca última performance
+            const prevStats = await getLastStats(exerciseName);
+
+            // Cria as séries
+            const sets: WorkoutSet[] = [];
+            for (let j = 0; j < numSets; j++) {
+                const setDbId = await createSet({
+                    exercise_id: exerciseDbId,
+                    order_index: j,
+                    set_type: 'N',
+                    weight_type: 'total',
+                    completed: false,
+                });
+
+                sets.push({
+                    id: Math.random().toString(),
+                    dbId: setDbId,
+                    kg: '',
+                    reps: '',
+                    rir: '',
+                    completed: false,
+                    type: 'N' as SetType,
+                    prev: prevStats,
+                });
+            }
+
+            const newExercise: WorkoutExercise = {
                 id: Math.random().toString(),
+                dbId: exerciseDbId,
+                name: exerciseName,
+                sets,
+            };
+
+            setExercises(prev => [...prev, newExercise]);
+            console.log(`[WorkoutContext] Added exercise: ${exerciseName}`);
+        } catch (error) {
+            console.error('[WorkoutContext] Error adding exercise:', error);
+        }
+    };
+
+    const addSet = async (exerciseId: string) => {
+        const exercise = exercises.find(ex => ex.id === exerciseId);
+        if (!exercise || !exercise.dbId) return;
+
+        try {
+            const lastSet = exercise.sets[exercise.sets.length - 1];
+            const newOrderIndex = exercise.sets.length;
+
+            const setDbId = await createSet({
+                exercise_id: exercise.dbId,
+                order_index: newOrderIndex,
+                set_type: 'N',
+                weight_type: 'total',
+                completed: false,
+            });
+
+            const newSet: WorkoutSet = {
+                id: Math.random().toString(),
+                dbId: setDbId,
                 kg: lastSet ? lastSet.kg : '',
                 reps: lastSet ? lastSet.reps : '',
                 rir: '',
                 completed: false,
                 type: 'N' as SetType,
-                prev: '-'
+                prev: '-',
             };
-            return { ...ex, sets: [...ex.sets, newSet] };
-        }));
+
+            setExercises(prev => prev.map(ex => {
+                if (ex.id !== exerciseId) return ex;
+                return { ...ex, sets: [...ex.sets, newSet] };
+            }));
+        } catch (error) {
+            console.error('[WorkoutContext] Error adding set:', error);
+        }
     };
 
     const updateSet = (exerciseId: string, setId: string, field: 'kg' | 'reps' | 'rir', value: string) => {
+        // Atualiza estado local imediatamente
         setExercises(prev => prev.map(ex => {
             if (ex.id !== exerciseId) return ex;
             return {
@@ -130,24 +426,75 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
                 sets: ex.sets.map(s => s.id === setId ? { ...s, [field]: value } : s)
             };
         }));
+
+        // Debounce para salvar no banco
+        const timeoutKey = `${setId}-${field}`;
+        const existingTimeout = updateTimeouts.current.get(timeoutKey);
+        if (existingTimeout) {
+            clearTimeout(existingTimeout);
+        }
+
+        const timeout = setTimeout(async () => {
+            const exercise = exercises.find(ex => ex.id === exerciseId);
+            const set = exercise?.sets.find(s => s.id === setId);
+
+            if (set?.dbId) {
+                try {
+                    const dbField = field === 'kg' ? 'weight' : field;
+                    const dbValue = field === 'kg' || field === 'reps'
+                        ? (value ? parseFloat(value) : null)
+                        : (value ? parseFloat(value) : null);
+
+                    await updateSetDb(set.dbId, { [dbField]: dbValue });
+                } catch (error) {
+                    console.error('[WorkoutContext] Error updating set:', error);
+                }
+            }
+
+            updateTimeouts.current.delete(timeoutKey);
+        }, 500);
+
+        updateTimeouts.current.set(timeoutKey, timeout);
     };
 
-    const toggleSet = (exerciseId: string, setId: string) => {
+    const toggleSet = async (exerciseId: string, setId: string) => {
         setExercises(prev => prev.map(ex => {
             if (ex.id !== exerciseId) return ex;
             return {
                 ...ex,
-                sets: ex.sets.map(s => s.id === setId ? { ...s, completed: !s.completed } : s)
+                sets: ex.sets.map(s => {
+                    if (s.id !== setId) return s;
+
+                    // Atualiza no banco
+                    if (s.dbId) {
+                        updateSetDb(s.dbId, { completed: !s.completed }).catch(error => {
+                            console.error('[WorkoutContext] Error toggling set:', error);
+                        });
+                    }
+
+                    return { ...s, completed: !s.completed };
+                })
             };
         }));
     };
 
-    const changeSetType = (exerciseId: string, setId: string, type: SetType) => {
+    const changeSetType = async (exerciseId: string, setId: string, type: SetType) => {
         setExercises(prev => prev.map(ex => {
             if (ex.id !== exerciseId) return ex;
             return {
                 ...ex,
-                sets: ex.sets.map(s => s.id === setId ? { ...s, type } : s)
+                sets: ex.sets.map(s => {
+                    if (s.id !== setId) return s;
+
+                    // Atualiza no banco
+                    if (s.dbId) {
+                        updateSetDb(s.dbId, { set_type: mapSetTypeToDb(type) }).catch(error => {
+                            console.error('[WorkoutContext] Error changing set type:', error);
+                        });
+                    }
+
+                    return { ...s, type };
+                })
             };
         }));
     };
@@ -157,13 +504,23 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
             isActive,
             isMinimized,
             workoutName,
+            workoutId,
             duration,
             exercises,
+            // Modal
+            showActiveModal,
+            pendingTemplate,
+            requestStartWorkout,
+            confirmStartNew,
+            resumeWorkout,
+            dismissModal,
+            // Workout actions
             startWorkout,
             minimizeWorkout,
             maximizeWorkout,
             finishWorkout,
             cancelWorkout,
+            addExercise,
             addSet,
             updateSet,
             toggleSet,

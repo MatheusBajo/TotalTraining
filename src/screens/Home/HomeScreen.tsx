@@ -26,7 +26,7 @@ const PlanTemplateCard = ({
     return (
         <Animated.View style={[animatedStyle, pressStyle]}>
             <TouchableOpacity
-                style={{ backgroundColor: theme.surface }}
+                style={{ backgroundColor: theme.surface}}
                 className="p-4 rounded-xl mb-3"
                 onPress={onPress}
                 onPressIn={onPressIn}
@@ -68,7 +68,7 @@ const PlanTemplateCard = ({
 // Componente para próximo treino sugerido com animação
 const NextWorkoutCard = ({ animatedStyle }: { animatedStyle?: any }) => {
     const { theme } = useTheme();
-    const { startWorkout } = useWorkout();
+    const { requestStartWorkout } = useWorkout();
     const { onPressIn, onPressOut, animatedStyle: pressStyle } = usePressAnimation();
     const hoje = new Date();
     const diasSemana = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -89,7 +89,7 @@ const NextWorkoutCard = ({ animatedStyle }: { animatedStyle?: any }) => {
             <TouchableOpacity
                 style={{ backgroundColor: theme.primary }}
                 className="p-4 rounded-xl mb-6"
-                onPress={() => startWorkout(template)}
+                onPress={() => requestStartWorkout(template)}
                 onPressIn={onPressIn}
                 onPressOut={onPressOut}
                 activeOpacity={1}
@@ -116,7 +116,7 @@ import { useWorkout } from '../../context/WorkoutContext';
 export const HomeScreen = () => {
     const { theme, toggleTheme } = useTheme();
     const navigation = useNavigation();
-    const { startWorkout } = useWorkout();
+    const { requestStartWorkout } = useWorkout();
     const scrollY = useRef(new Animated.Value(0)).current;
 
     // Nova animação com bounce e cascade
@@ -201,7 +201,7 @@ export const HomeScreen = () => {
                 {/* Quick Start */}
                 <Animated.View style={getItemStyle(2)} className="mb-6">
                     <TouchableOpacity
-                        onPress={() => startWorkout()}
+                        onPress={() => requestStartWorkout()}
                         style={{ backgroundColor: theme.surface, borderColor: theme.borderDashed }}
                         className="h-14 rounded-xl border border-dashed items-center justify-center flex-row"
                     >
@@ -256,11 +256,11 @@ export const HomeScreen = () => {
                         key={index}
                         template={template}
                         animatedStyle={getItemStyle(5 + index)}
-                        onPress={() => startWorkout(template)}
+                        onPress={() => requestStartWorkout(template)}
                     />
                 ))}
 
-                <View className="mb-20" />
+                <View className="h-32" />
             </Animated.ScrollView>
         </SafeAreaView>
     );

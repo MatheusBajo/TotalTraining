@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, Modal, TouchableWithoutFeedback, Animated, Dimensions } from 'react-native';
 import { useTheme } from '../theme';
 
-export type SetType = 'N' | 'W' | 'D' | 'F'; // Normal, Warm-up, Drop Set, Failure
+export type SetType = 'N' | 'W' | 'D' | 'F' | 'R' | 'S'; // Normal, Warm-up, Drop Set, Failure, Rest-Pause, Superset
 
 interface SetTypeModalProps {
     visible: boolean;
@@ -21,6 +21,8 @@ export const SetTypeModal = ({ visible, onClose, onSelect, currentType }: SetTyp
         { type: 'W', label: 'Warm-up', color: '#f59e0b', letter: 'W', desc: 'Aquecimento, não conta para o volume' },
         { type: 'D', label: 'Drop Set', color: '#a855f7', letter: 'D', desc: 'Redução de carga sem descanso' },
         { type: 'F', label: 'Failure', color: '#ef4444', letter: 'F', desc: 'Série levada até a falha total' },
+        { type: 'R', label: 'Rest-Pause', color: '#06b6d4', letter: 'R', desc: 'Pausa curta e continua' },
+        { type: 'S', label: 'Superset', color: '#10b981', letter: 'S', desc: 'Combinado com outro exercício' },
     ];
 
     return (

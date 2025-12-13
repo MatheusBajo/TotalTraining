@@ -86,7 +86,8 @@ export const WorkoutDrawer = () => {
                 top: 0,
                 height: SCREEN_HEIGHT,
                 zIndex: 100,
-                backgroundColor: theme.background,
+                backgroundColor: isMinimized ? 'transparent' : theme.background,
+                pointerEvents: isMinimized ? 'box-none' : 'auto',
             }}
         >
             {/* Mini Bar Content (Visible when minimized) */}
