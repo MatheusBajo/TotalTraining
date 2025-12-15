@@ -19,6 +19,7 @@ interface SetTypeOption {
 }
 
 const options: SetTypeOption[] = [
+    { type: 'N', label: 'Normal', color: '#9ca3af', letter: 'N' },
     { type: 'W', label: 'Aquecimento', color: '#f59e0b', letter: 'W' },
     { type: 'D', label: 'Drop set', color: '#a855f7', letter: 'D' },
     { type: 'F', label: 'Falha', color: '#ef4444', letter: 'F' },
@@ -29,6 +30,7 @@ const options: SetTypeOption[] = [
 interface SetTypeDropdownProps {
     currentType: SetType;
     index: number;
+    completed?: boolean;
     onSelect: (type: SetType) => void;
 }
 
@@ -46,7 +48,7 @@ const getTypeStyles = (type: SetType, defaultColor: string) => {
 
 const ANIMATION_DURATION = 150;
 
-export const SetTypeDropdown = ({ currentType, index, onSelect }: SetTypeDropdownProps) => {
+export const SetTypeDropdown = ({ currentType, index, completed = false, onSelect }: SetTypeDropdownProps) => {
     const { theme } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
@@ -57,6 +59,8 @@ export const SetTypeDropdown = ({ currentType, index, onSelect }: SetTypeDropdow
     const scale = useSharedValue(0.9);
 
     const typeStyles = getTypeStyles(currentType, theme.textSecondary);
+    // Quando completo, background fica transparente
+    const buttonBg = completed ? 'transparent' : typeStyles.bg;
 
     const handlePress = useCallback(() => {
         buttonRef.current?.measureInWindow((x, y) => {
@@ -104,7 +108,11 @@ export const SetTypeDropdown = ({ currentType, index, onSelect }: SetTypeDropdow
 
     const dropdownStyle = useAnimatedStyle(() => ({
         opacity: opacity.value,
-        transform: [{ scale: scale.value }],
+        transform: [
+            { scale: scale.value },
+        ],
+        // Origin no canto superior esquerdo
+        transformOrigin: 'left top',
     }));
 
     return (
@@ -112,7 +120,7 @@ export const SetTypeDropdown = ({ currentType, index, onSelect }: SetTypeDropdow
             <Pressable
                 ref={buttonRef}
                 onPress={handlePress}
-                style={[styles.button, { backgroundColor: typeStyles.bg }]}
+                style={[styles.button, { backgroundColor: buttonBg }]}
             >
                 <Text style={[styles.buttonText, { color: typeStyles.color }]}>
                     {currentType === 'N' ? index + 1 : currentType}

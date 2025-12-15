@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme';
@@ -62,7 +62,7 @@ export const ActiveWorkoutScreen = () => {
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
-    const handleAddSet = (exerciseId: string) => {
+    const handleAddSet = useCallback((exerciseId: string) => {
         setExercises((prev: any[]) => prev.map(ex => {
             if (ex.id !== exerciseId) return ex;
             const lastSet = ex.sets[ex.sets.length - 1];
@@ -77,9 +77,9 @@ export const ActiveWorkoutScreen = () => {
             };
             return { ...ex, sets: [...ex.sets, newSet] };
         }));
-    };
+    }, []);
 
-    const handleUpdateSet = (exerciseId: string, setId: string, field: 'kg' | 'reps' | 'rir', value: string) => {
+    const handleUpdateSet = useCallback((exerciseId: string, setId: string, field: 'kg' | 'reps' | 'rir', value: string) => {
         setExercises((prev: any[]) => prev.map(ex => {
             if (ex.id !== exerciseId) return ex;
             return {
@@ -87,9 +87,9 @@ export const ActiveWorkoutScreen = () => {
                 sets: ex.sets.map((s: any) => s.id === setId ? { ...s, [field]: value } : s)
             };
         }));
-    };
+    }, []);
 
-    const handleToggleSet = (exerciseId: string, setId: string) => {
+    const handleToggleSet = useCallback((exerciseId: string, setId: string) => {
         setExercises((prev: any[]) => prev.map(ex => {
             if (ex.id !== exerciseId) return ex;
             return {
@@ -97,9 +97,9 @@ export const ActiveWorkoutScreen = () => {
                 sets: ex.sets.map((s: any) => s.id === setId ? { ...s, completed: !s.completed } : s)
             };
         }));
-    };
+    }, []);
 
-    const handleChangeSetType = (exerciseId: string, setId: string, type: SetType) => {
+    const handleChangeSetType = useCallback((exerciseId: string, setId: string, type: SetType) => {
         setExercises((prev: any[]) => prev.map(ex => {
             if (ex.id !== exerciseId) return ex;
             return {
@@ -107,7 +107,7 @@ export const ActiveWorkoutScreen = () => {
                 sets: ex.sets.map((s: any) => s.id === setId ? { ...s, type } : s)
             };
         }));
-    };
+    }, []);
 
     const handleFinish = () => {
         Alert.alert('Finish Workout', 'Are you sure you want to finish?', [
@@ -154,12 +154,13 @@ export const ActiveWorkoutScreen = () => {
                 {exercises.map((ex: any) => (
                     <ExerciseCard
                         key={ex.id}
+                        exerciseId={ex.id}
                         name={ex.name}
                         sets={ex.sets}
-                        onAddSet={() => handleAddSet(ex.id)}
-                        onUpdateSet={(setId, field, val) => handleUpdateSet(ex.id, setId, field, val)}
-                        onToggleSet={(setId) => handleToggleSet(ex.id, setId)}
-                        onChangeSetType={(setId, type) => handleChangeSetType(ex.id, setId, type)}
+                        onAddSet={handleAddSet}
+                        onUpdateSet={handleUpdateSet}
+                        onToggleSet={handleToggleSet}
+                        onChangeSetType={handleChangeSetType}
                     />
                 ))}
 

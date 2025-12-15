@@ -175,6 +175,52 @@ app.delete('/api/workouts/:id', (req, res) => {
   }
 });
 
+// PUT /api/workouts/:id/finish-batch - Finaliza treino com todos os dados das séries
+app.put('/api/workouts/:id/finish-batch', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { duration_seconds, sets } = req.body;
+
+    // Pega datetime local
+    const now = new Date();
+    const finished_at = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+    // Usa transação para garantir atomicidade
+    db.transaction(() => {
+      // 1. Atualiza o workout
+      db.prepare(`
+        UPDATE workouts
+        SET finished_at = ?, duration_seconds = ?, updated_at = datetime('now', 'localtime')
+        WHERE id = ?
+      `).run(finished_at, duration_seconds, id);
+
+      // 2. Atualiza todas as séries
+      const updateSet = db.prepare(`
+        UPDATE sets
+        SET weight = ?, reps = ?, rir = ?, completed = ?, set_type = ?
+        WHERE id = ?
+      `);
+
+      for (const set of sets) {
+        updateSet.run(
+          set.weight ?? null,
+          set.reps ?? null,
+          set.rir ?? null,
+          set.completed ? 1 : 0,
+          set.set_type || 'N',
+          set.id
+        );
+      }
+    })();
+
+    console.log(`[PUT /api/workouts/${id}/finish-batch] Finished with ${sets.length} sets, duration ${duration_seconds}s`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[PUT /api/workouts/:id/finish-batch]', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ==================== EXERCISES ====================
 
 // GET /api/workouts/:id/exercises - Lista exercícios de um treino
@@ -484,7 +530,9 @@ app.get('/api/stats', (req, res) => {
       if (first && best && first.weight > 0) {
         const initialWeight = first.weight_type === 'per_side' ? first.weight * 2 : first.weight;
         const currentWeight = best.weight || initialWeight;
-        const evolution = initialWeight > 0 ? Math.round(((currentWeight - initialWeight) / initialWeight) * 100) : 0;
+        // Calcula evolução como % do ganho em relação ao peso atual
+        // Ex: 10kg -> 46kg = (46-10)/46 = 78% de ganho
+        const evolution = currentWeight > 0 ? Math.round(((currentWeight - initialWeight) / currentWeight) * 100) : 0;
 
         progression.push({
           exercicio: exerciseName,

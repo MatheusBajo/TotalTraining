@@ -1,0 +1,30 @@
+{
+  "Version": 1.0,
+  "Metadata": {
+    "Project": "TotalTraining",
+    "Created": "2024",
+    "Description": "Error buzz - double tap"
+  },
+  "Pattern": [
+    {
+      "Event": {
+        "Time": 0.0,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          { "ParameterID": "HapticIntensity", "ParameterValue": 0.8 },
+          { "ParameterID": "HapticSharpness", "ParameterValue": 0.9 }
+        ]
+      }
+    },
+    {
+      "Event": {
+        "Time": 0.1,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          { "ParameterID": "HapticIntensity", "ParameterValue": 0.8 },
+          { "ParameterID": "HapticSharpness", "ParameterValue": 0.9 }
+        ]
+      }
+    }
+  ]
+}

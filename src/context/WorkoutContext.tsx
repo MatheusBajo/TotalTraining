@@ -4,14 +4,14 @@ import { SetType } from '../components/SetTypeModal';
 import {
     createExercise,
     createSet,
-    updateSet as updateSetDb,
-    finishWorkout as finishWorkoutDb,
+    finishWorkoutBatch,
     deleteWorkout,
     getLastPerformance,
     createWorkoutBatch,
     getLastPerformanceBatch,
     getPRsBatch,
     SetPR,
+    FinishSetData,
 } from '../api';
 
 // Helper para pegar data/hora local (não UTC)
@@ -79,8 +79,9 @@ interface WorkoutContextData {
     addExercise: (exerciseName: string, numSets?: number) => Promise<void>;
     addSet: (exerciseId: string) => Promise<void>;
     updateSet: (exerciseId: string, setId: string, field: 'kg' | 'reps' | 'rir', value: string) => void;
-    toggleSet: (exerciseId: string, setId: string) => Promise<void>;
-    changeSetType: (exerciseId: string, setId: string, type: SetType) => Promise<void>;
+    toggleSet: (exerciseId: string, setId: string) => void;
+    changeSetType: (exerciseId: string, setId: string, type: SetType) => void;
+    fillFromPR: (exerciseId: string, setId: string) => void;
 }
 
 const WorkoutContext = createContext<WorkoutContextData>({} as WorkoutContextData);
@@ -299,8 +300,27 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
     const finishWorkout = async () => {
         if (workoutId) {
             try {
-                await finishWorkoutDb(workoutId, duration);
-                console.log(`[WorkoutContext] Finished workout #${workoutId}`);
+                // Coleta todos os dados das séries para enviar em batch
+                const allSets: FinishSetData[] = [];
+
+                for (const exercise of exercises) {
+                    for (const set of exercise.sets) {
+                        if (set.dbId) {
+                            allSets.push({
+                                id: set.dbId,
+                                weight: set.kg ? parseFloat(set.kg) : null,
+                                reps: set.reps ? parseInt(set.reps, 10) : null,
+                                rir: set.rir ? parseFloat(set.rir) : null,
+                                completed: set.completed,
+                                set_type: set.type || 'N',
+                            });
+                        }
+                    }
+                }
+
+                // Envia tudo de uma vez
+                await finishWorkoutBatch(workoutId, duration, allSets);
+                console.log(`[WorkoutContext] Finished workout #${workoutId} with ${allSets.length} sets`);
             } catch (error) {
                 console.error('[WorkoutContext] Error finishing workout:', error);
             }
@@ -310,6 +330,7 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
         setIsActive(false);
         setIsMinimized(false);
         setWorkoutId(null);
+        setExercises([]); // Limpa exercícios ao finalizar
     };
 
     const cancelWorkout = async () => {
@@ -326,6 +347,7 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
         setIsActive(false);
         setIsMinimized(false);
         setWorkoutId(null);
+        setExercises([]); // Limpa exercícios ao cancelar
     };
 
     const addExercise = async (exerciseName: string, numSets: number = 3) => {
@@ -417,8 +439,8 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
         }
     };
 
-    const updateSet = (exerciseId: string, setId: string, field: 'kg' | 'reps' | 'rir', value: string) => {
-        // Atualiza estado local imediatamente
+    // Atualiza estado local apenas - salva no servidor ao finalizar treino
+    const updateSet = useCallback((exerciseId: string, setId: string, field: 'kg' | 'reps' | 'rir', value: string) => {
         setExercises(prev => prev.map(ex => {
             if (ex.id !== exerciseId) return ex;
             return {
@@ -426,78 +448,54 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
                 sets: ex.sets.map(s => s.id === setId ? { ...s, [field]: value } : s)
             };
         }));
+    }, []);
 
-        // Debounce para salvar no banco
-        const timeoutKey = `${setId}-${field}`;
-        const existingTimeout = updateTimeouts.current.get(timeoutKey);
-        if (existingTimeout) {
-            clearTimeout(existingTimeout);
-        }
-
-        const timeout = setTimeout(async () => {
-            const exercise = exercises.find(ex => ex.id === exerciseId);
-            const set = exercise?.sets.find(s => s.id === setId);
-
-            if (set?.dbId) {
-                try {
-                    const dbField = field === 'kg' ? 'weight' : field;
-                    const dbValue = field === 'kg' || field === 'reps'
-                        ? (value ? parseFloat(value) : null)
-                        : (value ? parseFloat(value) : null);
-
-                    await updateSetDb(set.dbId, { [dbField]: dbValue });
-                } catch (error) {
-                    console.error('[WorkoutContext] Error updating set:', error);
-                }
-            }
-
-            updateTimeouts.current.delete(timeoutKey);
-        }, 500);
-
-        updateTimeouts.current.set(timeoutKey, timeout);
-    };
-
-    const toggleSet = async (exerciseId: string, setId: string) => {
+    // Apenas estado local - sem request
+    const toggleSet = useCallback((exerciseId: string, setId: string) => {
         setExercises(prev => prev.map(ex => {
             if (ex.id !== exerciseId) return ex;
             return {
                 ...ex,
                 sets: ex.sets.map(s => {
                     if (s.id !== setId) return s;
-
-                    // Atualiza no banco
-                    if (s.dbId) {
-                        updateSetDb(s.dbId, { completed: !s.completed }).catch(error => {
-                            console.error('[WorkoutContext] Error toggling set:', error);
-                        });
-                    }
-
                     return { ...s, completed: !s.completed };
                 })
             };
         }));
-    };
+    }, []);
 
-    const changeSetType = async (exerciseId: string, setId: string, type: SetType) => {
+    // Apenas estado local - sem request
+    const changeSetType = useCallback((exerciseId: string, setId: string, type: SetType) => {
         setExercises(prev => prev.map(ex => {
             if (ex.id !== exerciseId) return ex;
             return {
                 ...ex,
                 sets: ex.sets.map(s => {
                     if (s.id !== setId) return s;
-
-                    // Atualiza no banco
-                    if (s.dbId) {
-                        updateSetDb(s.dbId, { set_type: mapSetTypeToDb(type) }).catch(error => {
-                            console.error('[WorkoutContext] Error changing set type:', error);
-                        });
-                    }
-
                     return { ...s, type };
                 })
             };
         }));
-    };
+    }, []);
+
+    // Preenche campos com dados do PR (clicou no "Anterior")
+    const fillFromPR = useCallback((exerciseId: string, setId: string) => {
+        setExercises(prev => prev.map(ex => {
+            if (ex.id !== exerciseId) return ex;
+            return {
+                ...ex,
+                sets: ex.sets.map(s => {
+                    if (s.id !== setId || !s.prData) return s;
+                    return {
+                        ...s,
+                        kg: String(s.prData.weight),
+                        reps: String(s.prData.reps),
+                        rir: s.prData.rir !== null ? String(s.prData.rir) : '',
+                    };
+                })
+            };
+        }));
+    }, []);
 
     return (
         <WorkoutContext.Provider value={{
@@ -524,7 +522,8 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
             addSet,
             updateSet,
             toggleSet,
-            changeSetType
+            changeSetType,
+            fillFromPR
         }}>
             {children}
         </WorkoutContext.Provider>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { memo, useCallback } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useTheme } from '../theme';
 import { DotsThree, Link } from 'phosphor-react-native';
@@ -23,27 +23,52 @@ interface ExerciseSet {
 }
 
 interface ExerciseCardProps {
+    exerciseId: string;
     name: string;
     sets: ExerciseSet[];
-    onAddSet: () => void;
-    onUpdateSet: (setId: string, field: 'kg' | 'reps' | 'rir', value: string) => void;
-    onToggleSet: (setId: string) => void;
-    onChangeSetType: (setId: string, type: SetType) => void;
+    onAddSet: (exerciseId: string) => void;
+    onUpdateSet: (exerciseId: string, setId: string, field: 'kg' | 'reps' | 'rir', value: string) => void;
+    onToggleSet: (exerciseId: string, setId: string) => void;
+    onChangeSetType: (exerciseId: string, setId: string, type: SetType) => void;
+    onFillFromPR: (exerciseId: string, setId: string) => void;
     isSuperset?: boolean;
     supersetPosition?: 'first' | 'last' | 'middle';
 }
 
-export const ExerciseCard = ({
+const ExerciseCardComponent = ({
+    exerciseId,
     name,
     sets,
     onAddSet,
     onUpdateSet,
     onToggleSet,
     onChangeSetType,
+    onFillFromPR,
     isSuperset = false,
     supersetPosition
 }: ExerciseCardProps) => {
     const { theme } = useTheme();
+
+    // Memoiza callbacks que incluem o exerciseId
+    const handleAddSet = useCallback(() => {
+        onAddSet(exerciseId);
+    }, [exerciseId, onAddSet]);
+
+    const handleUpdateSet = useCallback((setId: string, field: 'kg' | 'reps' | 'rir', value: string) => {
+        onUpdateSet(exerciseId, setId, field, value);
+    }, [exerciseId, onUpdateSet]);
+
+    const handleToggleSet = useCallback((setId: string) => {
+        onToggleSet(exerciseId, setId);
+    }, [exerciseId, onToggleSet]);
+
+    const handleChangeSetType = useCallback((setId: string, type: SetType) => {
+        onChangeSetType(exerciseId, setId, type);
+    }, [exerciseId, onChangeSetType]);
+
+    const handleFillFromPR = useCallback((setId: string) => {
+        onFillFromPR(exerciseId, setId);
+    }, [exerciseId, onFillFromPR]);
 
     // Estilos condicionais para superset
     const supersetBorderStyle = isSuperset ? {
@@ -99,9 +124,9 @@ export const ExerciseCard = ({
             </View>
 
             {/* Column Headers */}
-            <View className="flex-row px-1 mb-2">
+            <View className="flex-row px-4 mb-2">
                 <Text style={{ color: theme.text }} className="w-10 text-center font-bold text-xs">Série</Text>
-                <Text style={{ color: theme.text }} className="flex-1 text-center font-bold text-xs">PR</Text>
+                <Text style={{ color: theme.text }} className="flex-1 text-center font-bold text-xs">Anterior</Text>
                 <Text style={{ color: theme.text }} className="flex-1 text-center font-bold text-xs">kg</Text>
                 <Text style={{ color: theme.text }} className="flex-1 text-center font-bold text-xs">Reps</Text>
                 <Text style={{ color: theme.text }} className="flex-1 text-center font-bold text-xs">RIR</Text>
@@ -109,10 +134,11 @@ export const ExerciseCard = ({
             </View>
 
             {/* Sets */}
-            <View className="px-1">
+            <View>
                 {sets.map((set, index) => (
                     <SetRow
                         key={set.id}
+                        setId={set.id}
                         index={index}
                         prev={set.prev}
                         prData={set.prData}
@@ -123,16 +149,17 @@ export const ExerciseCard = ({
                         type={set.type}
                         targetReps={set.targetReps}
                         targetRir={set.targetRir}
-                        onUpdate={(field, value) => onUpdateSet(set.id, field, value)}
-                        onToggle={() => onToggleSet(set.id)}
-                        onChangeType={(type) => onChangeSetType(set.id, type)}
+                        onUpdate={handleUpdateSet}
+                        onToggle={handleToggleSet}
+                        onChangeType={handleChangeSetType}
+                        onFillFromPR={handleFillFromPR}
                     />
                 ))}
             </View>
 
             {/* Add Set Button */}
             <TouchableOpacity
-                onPress={onAddSet}
+                onPress={handleAddSet}
                 style={{ backgroundColor: theme.background }}
                 className="mx-4 mt-2 mb-2 py-2 rounded items-center justify-center"
             >
@@ -141,3 +168,6 @@ export const ExerciseCard = ({
         </View>
     );
 };
+
+// Memoiza o componente para evitar re-renders quando outros exercícios mudam
+export const ExerciseCard = memo(ExerciseCardComponent);

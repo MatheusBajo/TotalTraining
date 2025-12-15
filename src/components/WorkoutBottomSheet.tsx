@@ -5,8 +5,6 @@ import Animated, {
     useAnimatedStyle,
     interpolate,
     Extrapolation,
-    useSharedValue,
-    withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
@@ -42,13 +40,28 @@ export const WorkoutBottomSheet = () => {
         addSet,
         updateSet,
         toggleSet,
-        changeSetType
+        changeSetType,
+        fillFromPR
     } = useWorkout();
 
     const [showAddExercise, setShowAddExercise] = useState(false);
     const [showFinishModal, setShowFinishModal] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
     const haptics = useHapticPatterns();
+
+    // Wrapper para chamar haptic ao completar set
+    const handleToggleSet = useCallback((exerciseId: string, setId: string) => {
+        // Encontra o set para ver se vai completar ou descompletar
+        const exercise = exercises.find(ex => ex.id === exerciseId);
+        const set = exercise?.sets.find(s => s.id === setId);
+
+        // Só toca haptic quando está COMPLETANDO (não descomplentando)
+        if (set && !set.completed) {
+            haptics.completeSet();
+        }
+
+        toggleSet(exerciseId, setId);
+    }, [exercises, toggleSet, haptics]);
 
     const navbarHeight = TAB_BAR_HEIGHT + insets.bottom;
 
@@ -154,39 +167,17 @@ export const WorkoutBottomSheet = () => {
         };
     });
 
-    return (
-        <BottomSheet
-            ref={bottomSheetRef}
-            index={-1}
-            snapPoints={snapPoints}
-            onChange={handleSheetChanges}
-            animatedIndex={animatedIndex}
-            animatedPosition={animatedPosition}
-            backgroundStyle={{ backgroundColor: theme.surface }}
-            handleIndicatorStyle={{ backgroundColor: theme.textSecondary, width: 40 }}
-            enablePanDownToClose={false}
-            enableDynamicSizing={false}
-            overDragResistanceFactor={10}
-        >
-            {/* ===== MINI PLAYER (quando minimizado) ===== */}
-            <Animated.View style={[styles.miniPlayerContainer, miniPlayerStyle]}>
-                <TouchableOpacity
-                    onPress={() => bottomSheetRef.current?.snapToIndex(1)}
-                    style={styles.miniPlayerTouchable}
-                    activeOpacity={0.7}
-                >
-                    <Text style={[styles.miniTitle, { color: theme.text }]}>{workoutName}</Text>
-                    <Text style={[styles.miniTimer, { color: theme.primary }]}>{formatTime(duration)}</Text>
-                </TouchableOpacity>
-            </Animated.View>
+    // Handle customizado que inclui o header (arrastável)
+    const renderHandle = useCallback(() => (
+        <View style={[styles.handleContainer, { backgroundColor: theme.surface }]}>
+            {/* Indicador de arrastar */}
+            <View style={[styles.handleIndicator, { backgroundColor: theme.textSecondary }]} />
 
-            {/* ===== CONTEÚDO EXPANDIDO ===== */}
-            <Animated.View style={[styles.expandedContainer, expandedStyle]}>
-                {/* Header Fixo */}
+            {/* Header com botões (expandido) */}
+            <Animated.View style={expandedStyle}>
                 <View style={[
                     styles.stickyHeader,
                     {
-                        backgroundColor: theme.surface,
                         borderBottomColor: isScrolled ? theme.textSecondary + '40' : 'transparent',
                         borderBottomWidth: StyleSheet.hairlineWidth,
                     }
@@ -199,7 +190,6 @@ export const WorkoutBottomSheet = () => {
                             <Timer size={20} color={theme.text} />
                         </TouchableOpacity>
 
-                        {/* Timer centralizado (só números, sem ícone) */}
                         {isScrolled && (
                             <View style={styles.headerTimerAbsolute}>
                                 <Text style={[styles.headerTimerText, { color: theme.primary }]}>
@@ -213,15 +203,50 @@ export const WorkoutBottomSheet = () => {
                         </TouchableOpacity>
                     </View>
                 </View>
+            </Animated.View>
 
+            {/* Mini player content (minimizado) */}
+            <Animated.View style={[styles.miniPlayerInHandle, miniPlayerStyle]}>
+                <TouchableOpacity
+                    onPress={() => bottomSheetRef.current?.snapToIndex(1)}
+                    style={styles.miniPlayerTouchable}
+                    activeOpacity={0.7}
+                >
+                    <Text style={[styles.miniTitle, { color: theme.text }]}>{workoutName}</Text>
+                    <Text style={[styles.miniTimer, { color: theme.primary }]}>{formatTime(duration)}</Text>
+                </TouchableOpacity>
+            </Animated.View>
+        </View>
+    ), [theme, isScrolled, duration, expandedStyle, miniPlayerStyle, workoutName]);
+
+    return (
+        <BottomSheet
+            ref={bottomSheetRef}
+            index={-1}
+            snapPoints={snapPoints}
+            onChange={handleSheetChanges}
+            animatedIndex={animatedIndex}
+            animatedPosition={animatedPosition}
+            backgroundStyle={{ backgroundColor: theme.surface }}
+            style={styles.sheetShadow}
+            handleComponent={renderHandle}
+            enablePanDownToClose={false}
+            enableDynamicSizing={false}
+            overDragResistanceFactor={10}
+            enableContentPanningGesture={false}
+        >
+            {/* ===== CONTEÚDO EXPANDIDO ===== */}
+            <Animated.View style={[styles.expandedContainer, expandedStyle]}>
                 <BottomSheetScrollView
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.scrollContent}
                     onScroll={handleScroll}
                     scrollEventThrottle={16}
+                    bounces={true}
+                    overScrollMode="always"
                 >
                     {/* Título + Menu */}
-                    <View style={styles.titleRow}>
+                    <View style={[styles.titleRow, styles.contentPadding]}>
                         <Text style={[styles.title, { color: theme.text }]}>{workoutName}</Text>
                         <TouchableOpacity style={[styles.menuButton, { backgroundColor: theme.primary }]}>
                             <DotsThree size={20} color="#fff" weight="bold" />
@@ -229,11 +254,11 @@ export const WorkoutBottomSheet = () => {
                     </View>
 
                     {/* Data e Hora */}
-                    <View style={styles.metaRow}>
+                    <View style={[styles.metaRow, styles.contentPadding]}>
                         <CalendarBlank size={16} color={theme.textSecondary} />
                         <Text style={[styles.metaText, { color: theme.textSecondary }]}>{formatDate()}</Text>
                     </View>
-                    <View style={styles.metaRow}>
+                    <View style={[styles.metaRow, styles.contentPadding]}>
                         <Clock size={16} color={theme.textSecondary} />
                         <Text style={[styles.metaText, { color: theme.textSecondary }]}>{formatTime(duration)}</Text>
                     </View>
@@ -267,12 +292,14 @@ export const WorkoutBottomSheet = () => {
                             return (
                                 <ExerciseCard
                                     key={ex.id}
+                                    exerciseId={ex.id}
                                     name={ex.name}
                                     sets={ex.sets}
-                                    onAddSet={() => addSet(ex.id)}
-                                    onUpdateSet={(setId, field, val) => updateSet(ex.id, setId, field, val)}
-                                    onToggleSet={(setId) => toggleSet(ex.id, setId)}
-                                    onChangeSetType={(setId, type) => changeSetType(ex.id, setId, type)}
+                                    onAddSet={addSet}
+                                    onUpdateSet={updateSet}
+                                    onToggleSet={handleToggleSet}
+                                    onChangeSetType={changeSetType}
+                                    onFillFromPR={fillFromPR}
                                     isSuperset={isSuperset}
                                     supersetPosition={supersetPosition}
                                 />
@@ -281,16 +308,18 @@ export const WorkoutBottomSheet = () => {
                     </View>
 
                     {/* Botões de ação */}
-                    <TouchableOpacity
-                        onPress={() => setShowAddExercise(true)}
-                        style={[styles.addExerciseButton, { backgroundColor: theme.primary + '20' }]}
-                    >
-                        <Text style={[styles.addExerciseText, { color: theme.primary }]}>+ Adicionar Exercício</Text>
-                    </TouchableOpacity>
+                    <View style={styles.contentPadding}>
+                        <TouchableOpacity
+                            onPress={() => setShowAddExercise(true)}
+                            style={[styles.addExerciseButton, { backgroundColor: theme.primary + '20' }]}
+                        >
+                            <Text style={[styles.addExerciseText, { color: theme.primary }]}>+ Adicionar Exercício</Text>
+                        </TouchableOpacity>
 
-                    <TouchableOpacity onPress={handleCancel} style={styles.cancelButton}>
-                        <Text style={styles.cancelText}>Cancelar Treino</Text>
-                    </TouchableOpacity>
+                        <TouchableOpacity onPress={handleCancel} style={styles.cancelButton}>
+                            <Text style={styles.cancelText}>Cancelar Treino</Text>
+                        </TouchableOpacity>
+                    </View>
 
                     <View style={{ height: 60 }} />
                 </BottomSheetScrollView>
@@ -316,16 +345,36 @@ export const WorkoutBottomSheet = () => {
 };
 
 const styles = StyleSheet.create({
-    // Mini-player
-    miniPlayerContainer: {
+    // Shadow-md para o sheet ficar em cima da página
+    sheetShadow: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+        elevation: 6,
+    },
+
+    // Handle customizado (arrastável)
+    handleContainer: {
+        paddingTop: 12,
+    },
+    handleIndicator: {
+        width: 36,
+        height: 4,
+        borderRadius: 2,
+        alignSelf: 'center',
+        marginBottom: 8,
+    },
+
+    // Mini-player dentro do handle
+    miniPlayerInHandle: {
         position: 'absolute',
-        top: 0,
+        top: 20,
         left: 0,
         right: 0,
-        height: MINI_PLAYER_HEIGHT,
+        height: MINI_PLAYER_HEIGHT - 20,
         justifyContent: 'center',
         alignItems: 'center',
-        zIndex: 10,
     },
     miniPlayerTouchable: {
         flex: 1,
@@ -391,8 +440,12 @@ const styles = StyleSheet.create({
         fontSize: 16,
     },
 
-    // Scroll content
+    // Scroll content - sem padding para o verde ir até as pontas
     scrollContent: {
+        paddingHorizontal: 0,
+    },
+    // Padding padrão do conteúdo
+    contentPadding: {
         paddingHorizontal: 16,
     },
 

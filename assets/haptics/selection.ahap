@@ -1,0 +1,20 @@
+{
+  "Version": 1.0,
+  "Metadata": {
+    "Project": "TotalTraining",
+    "Created": "2024",
+    "Description": "Soft selection tick"
+  },
+  "Pattern": [
+    {
+      "Event": {
+        "Time": 0.0,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          { "ParameterID": "HapticIntensity", "ParameterValue": 0.3 },
+          { "ParameterID": "HapticSharpness", "ParameterValue": 0.5 }
+        ]
+      }
+    }
+  ]
+}

@@ -7,7 +7,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { User, Clock, Plus, Barbell, Crown } from 'phosphor-react-native';
+import { User, Clock, Lightning, Barbell, Crown } from 'phosphor-react-native';
 import { useSheetAnimation } from '../context/SheetAnimationContext';
 import { useTheme } from '../theme';
 
@@ -18,7 +18,7 @@ const MINI_PLAYER_HEIGHT = 70;
 const tabs = [
     { name: 'Perfil', icon: User },
     { name: 'Histórico', icon: Clock },
-    { name: 'Iniciar o treino', icon: Plus },
+    { name: 'Iniciar o treino', icon: Lightning },
     { name: 'Exercícios', icon: Barbell },
     { name: 'Loja', icon: Crown },
 ];
@@ -83,6 +83,17 @@ export const StandaloneTabBar = () => {
         navigation.navigate('MainTabs', { screen: tabName });
     };
 
+    // Cor da navbar: background um pouco mais escuro
+    const darkenColor = (hex: string, amount: number = 0.03): string => {
+        const num = parseInt(hex.replace('#', ''), 16);
+        const r = Math.max(0, (num >> 16) - Math.round(255 * amount));
+        const g = Math.max(0, ((num >> 8) & 0x00FF) - Math.round(255 * amount));
+        const b = Math.max(0, (num & 0x0000FF) - Math.round(255 * amount));
+        return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`;
+    };
+
+    const navbarBackground = darkenColor(theme.background, 0.03);
+
     return (
         <Animated.View
             style={[
@@ -90,8 +101,14 @@ export const StandaloneTabBar = () => {
                 {
                     height: totalHeight,
                     paddingBottom: insets.bottom,
-                    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-                    borderTopColor: theme.border,
+                    backgroundColor: navbarBackground,
+                    // Shadow-md para cima
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: -2 },
+                    shadowOpacity: 0.15,
+                    shadowRadius: 4,
+                    // Elevation para Android
+                    elevation: 6,
                 },
                 animatedStyle,
             ]}
@@ -100,7 +117,6 @@ export const StandaloneTabBar = () => {
                 const isFocused = currentTab === tab.name;
                 const IconComponent = tab.icon;
                 const color = isFocused ? theme.tabBarActive : theme.tabBarInactive;
-                const iconSize = tab.name === 'Iniciar o treino' ? 32 : 24;
 
                 return (
                     <TouchableOpacity
@@ -109,7 +125,7 @@ export const StandaloneTabBar = () => {
                         style={styles.tab}
                         activeOpacity={0.7}
                     >
-                        <IconComponent color={color} size={iconSize} weight="fill" />
+                        <IconComponent color={color} size={24} weight="fill" />
                         <Text style={[styles.label, { color }]} numberOfLines={1}>
                             {tab.name}
                         </Text>
@@ -127,10 +143,8 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        borderTopWidth: 0.5,
         paddingTop: 8,
         zIndex: 9999,
-        elevation: 9999,
     },
     tab: {
         flex: 1,

@@ -236,6 +236,26 @@ export async function finishWorkout(workoutId: number, durationSeconds: number):
     });
 }
 
+export interface FinishSetData {
+    id: number;
+    weight: number | null;
+    reps: number | null;
+    rir: number | null;
+    completed: boolean;
+    set_type: string;
+}
+
+export async function finishWorkoutBatch(
+    workoutId: number,
+    durationSeconds: number,
+    sets: FinishSetData[]
+): Promise<void> {
+    await fetchApi(`/api/workouts/${workoutId}/finish-batch`, {
+        method: 'PUT',
+        body: JSON.stringify({ duration_seconds: durationSeconds, sets }),
+    });
+}
+
 export async function deleteWorkout(workoutId: number): Promise<void> {
     await fetchApi(`/api/workouts/${workoutId}`, {
         method: 'DELETE',

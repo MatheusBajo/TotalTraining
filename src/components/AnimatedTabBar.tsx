@@ -107,7 +107,7 @@ export const AnimatedTabBar = ({ state, descriptors, navigation }: BottomTabBarP
                         style={styles.tab}
                         activeOpacity={0.7}
                     >
-                        <IconComponent color={color} size={iconSize} weight="fill" />
+                        <IconComponent color={color} size={12} weight="fill" />
                         <Text style={[styles.label, { color }]} numberOfLines={1}>
                             {typeof label === 'string' ? label : route.name}
                         </Text>

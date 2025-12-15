@@ -1,0 +1,83 @@
+{
+  "Version": 1.0,
+  "Metadata": {
+    "Project": "TotalTraining",
+    "Created": "2024",
+    "Description": "Achievement unlocked - New Personal Record!"
+  },
+  "Pattern": [
+    {
+      "Event": {
+        "Time": 0.0,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          { "ParameterID": "HapticIntensity", "ParameterValue": 1.0 },
+          { "ParameterID": "HapticSharpness", "ParameterValue": 0.9 }
+        ]
+      }
+    },
+    {
+      "Event": {
+        "Time": 0.1,
+        "EventType": "HapticContinuous",
+        "EventDuration": 0.2,
+        "EventParameters": [
+          { "ParameterID": "HapticIntensity", "ParameterValue": 0.6 },
+          { "ParameterID": "HapticSharpness", "ParameterValue": 0.3 }
+        ]
+      }
+    },
+    {
+      "Event": {
+        "Time": 0.35,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          { "ParameterID": "HapticIntensity", "ParameterValue": 0.7 },
+          { "ParameterID": "HapticSharpness", "ParameterValue": 0.7 }
+        ]
+      }
+    },
+    {
+      "Event": {
+        "Time": 0.42,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          { "ParameterID": "HapticIntensity", "ParameterValue": 0.8 },
+          { "ParameterID": "HapticSharpness", "ParameterValue": 0.8 }
+        ]
+      }
+    },
+    {
+      "Event": {
+        "Time": 0.49,
+        "EventType": "HapticTransient",
+        "EventParameters": [
+          { "ParameterID": "HapticIntensity", "ParameterValue": 0.9 },
+          { "ParameterID": "HapticSharpness", "ParameterValue": 0.9 }
+        ]
+      }
+    },
+    {
+      "Event": {
+        "Time": 0.6,
+        "EventType": "HapticContinuous",
+        "EventDuration": 0.25,
+        "EventParameters": [
+          { "ParameterID": "HapticIntensity", "ParameterValue": 0.8 },
+          { "ParameterID": "HapticSharpness", "ParameterValue": 0.4 }
+        ]
+      }
+    },
+    {
+      "ParameterCurve": {
+        "ParameterID": "HapticIntensityControl",
+        "Time": 0.6,
+        "ParameterCurveControlPoints": [
+          { "Time": 0, "ParameterValue": 0.8 },
+          { "Time": 0.12, "ParameterValue": 1.0 },
+          { "Time": 0.25, "ParameterValue": 0.0 }
+        ]
+      }
+    }
+  ]
+}

@@ -4,7 +4,13 @@
       "Bash(npm install:*)",
       "Bash(npm uninstall:*)",
       "Bash(npx expo install:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(npx tsc:*)",
+      "Bash(curl:*)",
+      "Bash(node:*)",
+      "Bash(dir /s:*)",
+      "Bash(xcopy:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

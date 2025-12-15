@@ -152,12 +152,13 @@ export const WorkoutDrawer = () => {
                         {exercises.map(ex => (
                             <ExerciseCard
                                 key={ex.id}
+                                exerciseId={ex.id}
                                 name={ex.name}
                                 sets={ex.sets}
-                                onAddSet={() => addSet(ex.id)}
-                                onUpdateSet={(setId, field, val) => updateSet(ex.id, setId, field, val)}
-                                onToggleSet={(setId) => toggleSet(ex.id, setId)}
-                                onChangeSetType={(setId, type) => changeSetType(ex.id, setId, type)}
+                                onAddSet={addSet}
+                                onUpdateSet={updateSet}
+                                onToggleSet={toggleSet}
+                                onChangeSetType={changeSetType}
                             />
                         ))}
 
