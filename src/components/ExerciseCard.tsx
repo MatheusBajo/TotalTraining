@@ -99,7 +99,7 @@ const ExerciseCardComponent = ({
             )}
 
             {/* Header */}
-            <View className="flex-row justify-between items-center px-2 mb-4">
+            <View className="flex-row justify-between items-center px-4 mb-4">
                 <View className="flex-row items-center">
                     <View
                         style={{

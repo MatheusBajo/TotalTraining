@@ -1,15 +1,22 @@
-import React, { useRef, memo, useCallback, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useRef, memo, useCallback, useState, useEffect } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Keyboard } from 'react-native';
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
     withSequence,
     withTiming,
+    withSpring,
+    interpolate,
+    Easing,
 } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
+
+const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 import { useTheme } from '../theme';
 import { Check, Barbell, Repeat, Target } from 'phosphor-react-native';
 import { SetType } from './SetTypeModal';
 import { SetTypeDropdown } from './SetTypeDropdown';
+import { KeyboardInput } from './KeyboardInput';
 
 interface SetRowProps {
     setId: string;
@@ -54,19 +61,91 @@ const toSuperscript = (num: number): string => {
 
 const SetRowComponent = ({ setId, index, prev, prData, kg, reps, rir, completed, type, targetReps, targetRir, onUpdate, onToggle, onChangeType, onFillFromPR }: SetRowProps) => {
     const { theme } = useTheme();
-    const kgRef = useRef<TextInput>(null);
-    const repsRef = useRef<TextInput>(null);
-    const rirRef = useRef<TextInput>(null);
+
+    // IDs unicos para registro no contexto (passed to KeyboardInput)
+    const kgInputId = `${setId}-kg`;
+    const repsInputId = `${setId}-reps`;
+    const rirInputId = `${setId}-rir`;
 
     // Estados de erro para validação
     const [kgError, setKgError] = useState(false);
     const [repsError, setRepsError] = useState(false);
 
-    // Animação de shake
+    // Animação de shake (erro)
     const shakeX = useSharedValue(0);
 
-    const shakeStyle = useAnimatedStyle(() => ({
-        transform: [{ translateX: shakeX.value }],
+    // Animação de Haptic (sucesso)
+    // 0 -> 1: Progresso do verde descendo
+    const progress = useSharedValue(completed ? 1 : 0);
+    // Flash de impacto: 0 -> 1 -> 0
+    const impactFlash = useSharedValue(0);
+    // Scale: 1 -> 1.02 -> 1 (sobe com buildup, volta na porrada)
+    const rowScale = useSharedValue(1);
+
+    // Reage a mudanças em 'completed'
+    useEffect(() => {
+        if (completed) {
+            // SEQUÊNCIA DE SUCESSO SINCRONIZADA COM HAPTIC
+            // 0ms -- 500ms: Buildup (Verde descendo + Scale subindo)
+            // 550ms: Impacto (Flash + Scale volta)
+
+            // Verde desce de cima pra baixo
+            progress.value = withTiming(1, {
+                duration: 500,
+                easing: Easing.out(Easing.cubic)
+            });
+
+            // Scale sobe durante buildup
+            rowScale.value = withTiming(1.015, {
+                duration: 500,
+                easing: Easing.out(Easing.cubic)
+            });
+
+            // Na porrada (550ms): flash + scale volta com bounce
+            setTimeout(() => {
+                impactFlash.value = withSequence(
+                    withTiming(1, { duration: 50 }),
+                    withTiming(0, { duration: 300 })
+                );
+                rowScale.value = withSpring(1, {
+                    damping: 12,
+                    stiffness: 400,
+                });
+            }, 500);
+
+        } else {
+            // Reset rápido
+            progress.value = withTiming(0, { duration: 200 });
+            impactFlash.value = 0;
+            rowScale.value = withTiming(1, { duration: 150 });
+        }
+    }, [completed]);
+
+    // Estilo com shake + scale
+    const rowAnimatedStyle = useAnimatedStyle(() => ({
+        transform: [
+            { translateX: shakeX.value },
+            { scale: rowScale.value },
+        ],
+    }));
+
+    // Verde desce de cima pra baixo (cobre 100%)
+    const gradientFillStyle = useAnimatedStyle(() => {
+        // translateY: -100% (escondido acima) -> 0% (cobrindo tudo)
+        const translateY = interpolate(
+            progress.value,
+            [0, 1],
+            [-100, 0]
+        );
+
+        return {
+            transform: [{ translateY: `${translateY}%` }]
+        };
+    });
+
+    // Flash de impacto
+    const impactStyle = useAnimatedStyle(() => ({
+        opacity: impactFlash.value,
     }));
 
     const triggerShake = useCallback(() => {
@@ -108,19 +187,8 @@ const SetRowComponent = ({ setId, index, prev, prData, kg, reps, rir, completed,
         onChangeType(setId, newType);
     }, [setId, onChangeType]);
 
-    const handleUpdateKg = useCallback((value: string) => {
-        if (kgError) setKgError(false);
-        onUpdate(setId, 'kg', value);
-    }, [setId, onUpdate, kgError]);
+    // Handlers memoizados que incluem o setId
 
-    const handleUpdateReps = useCallback((value: string) => {
-        if (repsError) setRepsError(false);
-        onUpdate(setId, 'reps', value);
-    }, [setId, onUpdate, repsError]);
-
-    const handleUpdateRir = useCallback((value: string) => {
-        onUpdate(setId, 'rir', value);
-    }, [setId, onUpdate]);
 
     // Preenche campos com dados do PR
     const handleFillFromPR = useCallback(() => {
@@ -139,32 +207,51 @@ const SetRowComponent = ({ setId, index, prev, prData, kg, reps, rir, completed,
         return `${weight}kg x ${prReps}${rirStr}`;
     };
 
-    const getTypeBackgroundColor = () => {
-        switch (type) {
-            case 'W': return '#f59e0b10';
-            case 'D': return '#a855f710';
-            case 'F': return '#ef444410';
-            case 'R': return '#06b6d410';
-            case 'S': return '#10b98110';
-            default: return 'transparent';
-        }
-    };
+    // Background: só mostra cor do tipo se NÃO está completed
+    // Quando completed, o verde sólido cobre tudo
+    const rowBackgroundColor = theme.surface;
 
-    const rowBackgroundColor = completed ? '#22c55e20' : getTypeBackgroundColor();
     const checkboxBackgroundColor = completed ? '#22c55e' : theme.surface;
     const checkColor = completed ? '#fff' : theme.textSecondary;
+
+    // Cor do texto "Anterior" - disabled quando completed
+    const anteriorTextColor = completed ? theme.textSecondary : theme.text;
+    const anteriorOpacity = completed ? 0.5 : 1;
 
     // Placeholders baseados no PR
     const kgPlaceholder = prData ? String(prData.weight) : '-';
     const repsPlaceholder = prData ? String(prData.reps) : (targetReps || '-');
     const rirPlaceholder = prData?.rir !== null && prData?.rir !== undefined ? String(prData.rir) : (targetRir || '-');
 
-    // Cores de erro
-    const kgBorderColor = kgError ? '#ef4444' : 'transparent';
-    const repsBorderColor = repsError ? '#ef4444' : 'transparent';
+    // Cores de erro ou Foco (agora handled no KeyboardInput)
+    // ...
 
     return (
-        <Animated.View style={[styles.row, { backgroundColor: rowBackgroundColor }, shakeStyle]}>
+        <Animated.View style={[styles.row, { backgroundColor: rowBackgroundColor, overflow: 'hidden' }, rowAnimatedStyle]}>
+            {/* Background Layer: Verde sólido descendo de cima */}
+            <Animated.View
+                style={[
+                    StyleSheet.absoluteFill,
+                    {
+                        backgroundColor: '#22c55e20',
+                        zIndex: -2,
+                    },
+                    gradientFillStyle
+                ]}
+            />
+
+            {/* Background Layer: Flash branco no impacto */}
+            <Animated.View
+                style={[
+                    StyleSheet.absoluteFill,
+                    {
+                        backgroundColor: '#ffffff40',
+                        zIndex: -1,
+                    },
+                    impactStyle
+                ]}
+            />
+
             {/* Set Number / Type - Dropdown */}
             <SetTypeDropdown
                 currentType={type}
@@ -181,7 +268,10 @@ const SetRowComponent = ({ setId, index, prev, prData, kg, reps, rir, completed,
                 activeOpacity={completed ? 1 : 0.6}
             >
                 <Text
-                    style={{ color: theme.text }}
+                    style={{
+                        color: anteriorTextColor,
+                        opacity: anteriorOpacity,
+                    }}
                     className="text-xs text-center"
                 >
                     {formatPR()}
@@ -190,76 +280,42 @@ const SetRowComponent = ({ setId, index, prev, prData, kg, reps, rir, completed,
 
             {/* KG */}
             <View className="flex-1 items-center justify-center mx-1">
-                <View
-                    style={{
-                        backgroundColor: theme.background,
-                        borderWidth: 2,
-                        borderColor: kgBorderColor,
-                        borderRadius: 4,
-                    }}
-                    className="flex-row items-center px-1"
-                >
-                    <Barbell size={12} color={kgError ? '#ef4444' : theme.textSecondary} weight="bold" />
-                    <TextInput
-                        ref={kgRef}
-                        value={kg}
-                        onChangeText={handleUpdateKg}
-                        keyboardType="decimal-pad"
-                        returnKeyType="next"
-                        blurOnSubmit={false}
-                        onSubmitEditing={() => repsRef.current?.focus()}
-                        placeholder={kgPlaceholder}
-                        placeholderTextColor={theme.textSecondary}
-                        style={{ color: theme.text }}
-                        className="flex-1 text-center py-1 font-bold"
-                    />
-                </View>
+                <KeyboardInput
+                    id={kgInputId}
+                    value={kg}
+                    placeholder={kgPlaceholder}
+                    onChange={(val) => onUpdate(setId, 'kg', val)}
+                    inputStep={2.5}
+                    hasError={kgError}
+                    icon={<Barbell size={12} color={kgError ? '#ef4444' : theme.textSecondary} weight="bold" />}
+                />
             </View>
 
             {/* Reps */}
             <View className="flex-1 items-center justify-center mx-1">
-                <View
-                    style={{
-                        backgroundColor: theme.background,
-                        borderWidth: 2,
-                        borderColor: repsBorderColor,
-                        borderRadius: 4,
-                    }}
-                    className="flex-row items-center px-1"
-                >
-                    <Repeat size={12} color={repsError ? '#ef4444' : theme.textSecondary} weight="bold" />
-                    <TextInput
-                        ref={repsRef}
-                        value={reps}
-                        onChangeText={handleUpdateReps}
-                        keyboardType="number-pad"
-                        returnKeyType="next"
-                        blurOnSubmit={false}
-                        onSubmitEditing={() => rirRef.current?.focus()}
-                        placeholder={repsPlaceholder}
-                        placeholderTextColor={theme.textSecondary}
-                        style={{ color: theme.text }}
-                        className="flex-1 text-center py-1 font-bold"
-                    />
-                </View>
+                <KeyboardInput
+                    id={repsInputId}
+                    value={reps}
+                    placeholder={repsPlaceholder}
+                    onChange={(val) => onUpdate(setId, 'reps', val)}
+                    inputStep={1}
+                    hasError={repsError}
+                    icon={<Repeat size={12} color={repsError ? '#ef4444' : theme.textSecondary} weight="bold" />}
+                    keyboardType="number-pad"
+                />
             </View>
 
             {/* RIR */}
             <View className="flex-1 items-center justify-center mx-1">
-                <View style={{ backgroundColor: theme.background, borderRadius: 4 }} className="flex-row items-center px-1">
-                    <Target size={12} color={theme.textSecondary} weight="bold" />
-                    <TextInput
-                        ref={rirRef}
-                        value={rir}
-                        onChangeText={handleUpdateRir}
-                        keyboardType="number-pad"
-                        returnKeyType="done"
-                        placeholder={rirPlaceholder}
-                        placeholderTextColor={theme.textSecondary}
-                        style={{ color: theme.text }}
-                        className="flex-1 text-center py-1 font-bold"
-                    />
-                </View>
+                <KeyboardInput
+                    id={rirInputId}
+                    value={rir}
+                    placeholder={rirPlaceholder}
+                    onChange={(val) => onUpdate(setId, 'rir', val)}
+                    inputStep={1}
+                    icon={<Target size={12} color={theme.textSecondary} weight="bold" />}
+                    keyboardType="number-pad"
+                />
             </View>
 
             {/* Checkbox */}

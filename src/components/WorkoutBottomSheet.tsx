@@ -15,6 +15,8 @@ import { ExerciseCard } from './ExerciseCard';
 import { AddExerciseModal } from './AddExerciseModal';
 import { FinishWorkoutModal } from './FinishWorkoutModal';
 import { useHapticPatterns } from '../hooks';
+import { KeyboardProvider } from '../context/KeyboardContext';
+import { CustomKeyboard } from './CustomKeyboard';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MINI_PLAYER_HEIGHT = 70;
@@ -220,127 +222,134 @@ export const WorkoutBottomSheet = () => {
     ), [theme, isScrolled, duration, expandedStyle, miniPlayerStyle, workoutName]);
 
     return (
-        <BottomSheet
-            ref={bottomSheetRef}
-            index={-1}
-            snapPoints={snapPoints}
-            onChange={handleSheetChanges}
-            animatedIndex={animatedIndex}
-            animatedPosition={animatedPosition}
-            backgroundStyle={{ backgroundColor: theme.surface }}
-            style={styles.sheetShadow}
-            handleComponent={renderHandle}
-            enablePanDownToClose={false}
-            enableDynamicSizing={false}
-            overDragResistanceFactor={10}
-            enableContentPanningGesture={false}
-        >
-            {/* ===== CONTEÚDO EXPANDIDO ===== */}
-            <Animated.View style={[styles.expandedContainer, expandedStyle]}>
-                <BottomSheetScrollView
-                    showsVerticalScrollIndicator={false}
-                    contentContainerStyle={styles.scrollContent}
-                    onScroll={handleScroll}
-                    scrollEventThrottle={16}
-                    bounces={true}
-                    overScrollMode="always"
+        <KeyboardProvider>
+            <View style={[StyleSheet.absoluteFill, { pointerEvents: 'box-none', zIndex: 999 }]}>
+                <BottomSheet
+                    ref={bottomSheetRef}
+                    index={-1}
+                    snapPoints={snapPoints}
+                    onChange={handleSheetChanges}
+                    animatedIndex={animatedIndex}
+                    animatedPosition={animatedPosition}
+                    backgroundStyle={{ backgroundColor: theme.surface }}
+                    style={styles.sheetShadow}
+                    handleComponent={renderHandle}
+                    enablePanDownToClose={false}
+                    enableDynamicSizing={false}
+                    overDragResistanceFactor={10}
+                    enableContentPanningGesture={false}
                 >
-                    {/* Título + Menu */}
-                    <View style={[styles.titleRow, styles.contentPadding]}>
-                        <Text style={[styles.title, { color: theme.text }]}>{workoutName}</Text>
-                        <TouchableOpacity style={[styles.menuButton, { backgroundColor: theme.primary }]}>
-                            <DotsThree size={20} color="#fff" weight="bold" />
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* Data e Hora */}
-                    <View style={[styles.metaRow, styles.contentPadding]}>
-                        <CalendarBlank size={16} color={theme.textSecondary} />
-                        <Text style={[styles.metaText, { color: theme.textSecondary }]}>{formatDate()}</Text>
-                    </View>
-                    <View style={[styles.metaRow, styles.contentPadding]}>
-                        <Clock size={16} color={theme.textSecondary} />
-                        <Text style={[styles.metaText, { color: theme.textSecondary }]}>{formatTime(duration)}</Text>
-                    </View>
-
-                    {/* Exercícios */}
-                    <View style={styles.exercisesContainer}>
-                        {exercises.map((ex, index) => {
-                            // Detecta se é superset baseado no ID (4a/4b, 5a/5b, etc)
-                            const isSuperset = /[a-z]$/.test(ex.id);
-                            let supersetPosition: 'first' | 'last' | 'middle' | undefined;
-
-                            if (isSuperset) {
-                                const baseId = ex.id.slice(0, -1);
-                                const prevEx = exercises[index - 1];
-                                const nextEx = exercises[index + 1];
-
-                                const prevIsPartner = prevEx && prevEx.id.slice(0, -1) === baseId;
-                                const nextIsPartner = nextEx && nextEx.id.slice(0, -1) === baseId;
-
-                                if (!prevIsPartner && nextIsPartner) {
-                                    supersetPosition = 'first';
-                                } else if (prevIsPartner && !nextIsPartner) {
-                                    supersetPosition = 'last';
-                                } else if (prevIsPartner && nextIsPartner) {
-                                    supersetPosition = 'middle';
-                                } else {
-                                    supersetPosition = 'first';
-                                }
-                            }
-
-                            return (
-                                <ExerciseCard
-                                    key={ex.id}
-                                    exerciseId={ex.id}
-                                    name={ex.name}
-                                    sets={ex.sets}
-                                    onAddSet={addSet}
-                                    onUpdateSet={updateSet}
-                                    onToggleSet={handleToggleSet}
-                                    onChangeSetType={changeSetType}
-                                    onFillFromPR={fillFromPR}
-                                    isSuperset={isSuperset}
-                                    supersetPosition={supersetPosition}
-                                />
-                            );
-                        })}
-                    </View>
-
-                    {/* Botões de ação */}
-                    <View style={styles.contentPadding}>
-                        <TouchableOpacity
-                            onPress={() => setShowAddExercise(true)}
-                            style={[styles.addExerciseButton, { backgroundColor: theme.primary + '20' }]}
+                    {/* ===== CONTEÚDO EXPANDIDO ===== */}
+                    <Animated.View style={[styles.expandedContainer, expandedStyle]}>
+                        <BottomSheetScrollView
+                            showsVerticalScrollIndicator={false}
+                            contentContainerStyle={styles.scrollContent}
+                            onScroll={handleScroll}
+                            scrollEventThrottle={16}
+                            bounces={true}
+                            overScrollMode="always"
                         >
-                            <Text style={[styles.addExerciseText, { color: theme.primary }]}>+ Adicionar Exercício</Text>
-                        </TouchableOpacity>
+                            {/* Título + Menu */}
+                            <View style={[styles.titleRow, styles.contentPadding]}>
+                                <Text style={[styles.title, { color: theme.text }]}>{workoutName}</Text>
+                                <TouchableOpacity style={[styles.menuButton, { backgroundColor: theme.primary }]}>
+                                    <DotsThree size={20} color="#fff" weight="bold" />
+                                </TouchableOpacity>
+                            </View>
 
-                        <TouchableOpacity onPress={handleCancel} style={styles.cancelButton}>
-                            <Text style={styles.cancelText}>Cancelar Treino</Text>
-                        </TouchableOpacity>
-                    </View>
+                            {/* Data e Hora */}
+                            <View style={[styles.metaRow, styles.contentPadding]}>
+                                <CalendarBlank size={16} color={theme.textSecondary} />
+                                <Text style={[styles.metaText, { color: theme.textSecondary }]}>{formatDate()}</Text>
+                            </View>
+                            <View style={[styles.metaRow, styles.contentPadding]}>
+                                <Clock size={16} color={theme.textSecondary} />
+                                <Text style={[styles.metaText, { color: theme.textSecondary }]}>{formatTime(duration)}</Text>
+                            </View>
 
-                    <View style={{ height: 60 }} />
-                </BottomSheetScrollView>
-            </Animated.View>
+                            {/* Exercícios */}
+                            <View style={styles.exercisesContainer}>
+                                {exercises.map((ex, index) => {
+                                    // Detecta se é superset baseado no ID (4a/4b, 5a/5b, etc)
+                                    const isSuperset = /[a-z]$/.test(ex.id);
+                                    let supersetPosition: 'first' | 'last' | 'middle' | undefined;
 
-            <AddExerciseModal
-                visible={showAddExercise}
-                onClose={() => setShowAddExercise(false)}
-                onAdd={(name) => addExercise(name)}
-            />
+                                    if (isSuperset) {
+                                        const baseId = ex.id.slice(0, -1);
+                                        const prevEx = exercises[index - 1];
+                                        const nextEx = exercises[index + 1];
 
-            <FinishWorkoutModal
-                visible={showFinishModal}
-                hasData={hasData}
-                hasIncomplete={hasIncomplete}
-                onFinish={handleConfirmFinish}
-                onFinishAnyway={handleConfirmFinish}
-                onCancel={() => setShowFinishModal(false)}
-                onDiscardWorkout={handleDiscardWorkout}
-            />
-        </BottomSheet>
+                                        const prevIsPartner = prevEx && prevEx.id.slice(0, -1) === baseId;
+                                        const nextIsPartner = nextEx && nextEx.id.slice(0, -1) === baseId;
+
+                                        if (!prevIsPartner && nextIsPartner) {
+                                            supersetPosition = 'first';
+                                        } else if (prevIsPartner && !nextIsPartner) {
+                                            supersetPosition = 'last';
+                                        } else if (prevIsPartner && nextIsPartner) {
+                                            supersetPosition = 'middle';
+                                        } else {
+                                            supersetPosition = 'first';
+                                        }
+                                    }
+
+                                    return (
+                                        <ExerciseCard
+                                            key={ex.id}
+                                            exerciseId={ex.id}
+                                            name={ex.name}
+                                            sets={ex.sets}
+                                            onAddSet={addSet}
+                                            onUpdateSet={updateSet}
+                                            onToggleSet={handleToggleSet}
+                                            onChangeSetType={changeSetType}
+                                            onFillFromPR={fillFromPR}
+                                            isSuperset={isSuperset}
+                                            supersetPosition={supersetPosition}
+                                        />
+                                    );
+                                })}
+                            </View>
+
+                            {/* Botões de ação */}
+                            <View style={styles.contentPadding}>
+                                <TouchableOpacity
+                                    onPress={() => setShowAddExercise(true)}
+                                    style={[styles.addExerciseButton, { backgroundColor: theme.primary + '20' }]}
+                                >
+                                    <Text style={[styles.addExerciseText, { color: theme.primary }]}>+ Adicionar Exercício</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity onPress={handleCancel} style={styles.cancelButton}>
+                                    <Text style={styles.cancelText}>Cancelar Treino</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            <View style={{ height: 60 }} />
+                        </BottomSheetScrollView>
+                    </Animated.View>
+
+                    <AddExerciseModal
+                        visible={showAddExercise}
+                        onClose={() => setShowAddExercise(false)}
+                        onAdd={(name) => addExercise(name)}
+                    />
+
+                    <FinishWorkoutModal
+                        visible={showFinishModal}
+                        hasData={hasData}
+                        hasIncomplete={hasIncomplete}
+                        onFinish={handleConfirmFinish}
+                        onFinishAnyway={handleConfirmFinish}
+                        onCancel={() => setShowFinishModal(false)}
+                        onDiscardWorkout={handleDiscardWorkout}
+                    />
+                </BottomSheet>
+
+                {/* TECLADO FORA DO BOTTOM SHEET - Rendering on top (Z-Index handled by absolute position in Comp) */}
+                <CustomKeyboard />
+            </View>
+        </KeyboardProvider>
     );
 };
 

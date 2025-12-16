@@ -46,7 +46,7 @@ const getTypeStyles = (type: SetType, defaultColor: string) => {
     }
 };
 
-const ANIMATION_DURATION = 150;
+const ANIMATION_DURATION = 170;
 
 export const SetTypeDropdown = ({ currentType, index, completed = false, onSelect }: SetTypeDropdownProps) => {
     const { theme } = useTheme();
@@ -103,7 +103,7 @@ export const SetTypeDropdown = ({ currentType, index, completed = false, onSelec
     }, [startClosing]);
 
     const backdropStyle = useAnimatedStyle(() => ({
-        opacity: opacity.value * 0.5,
+        opacity: opacity.value * 0.8,
     }));
 
     const dropdownStyle = useAnimatedStyle(() => ({
@@ -196,10 +196,10 @@ const styles = StyleSheet.create({
         minWidth: 170,
         borderRadius: 10,
         paddingVertical: 6,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
+        shadowColor: '#FFF',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.05,
+        shadowRadius: 18,
         elevation: 8,
     },
     option: {
@@ -209,13 +209,13 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
     },
     optionLetter: {
-        fontWeight: 'bold',
+        fontWeight: '800',
         fontSize: 14,
         width: 24,
     },
     optionLabel: {
         flex: 1,
         fontSize: 14,
-        fontWeight: '500',
+        fontWeight: '700',
     },
 });

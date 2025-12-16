@@ -10,6 +10,7 @@ import { usePressAnimation, useScreenAnimation } from '../hooks';
 import { getAllWorkouts, getExercisesByWorkout, getFullWorkout, deleteWorkout, WorkoutRecord, getUserStats, UserStats } from '../api';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
+import { WorkoutDetailModal } from '../components/WorkoutDetailModal';
 
 const PlaceholderScreen = ({ name }: { name: string }) => {
     const { theme } = useTheme();
@@ -30,11 +31,13 @@ interface WorkoutWithExercises extends WorkoutRecord {
 const WorkoutCard = ({
     workout,
     style,
+    onPress,
     onExport,
     onDelete
 }: {
     workout: WorkoutWithExercises;
     style: any;
+    onPress: (id: number) => void;
     onExport: (id: number) => void;
     onDelete: (id: number) => void;
 }) => {
@@ -49,7 +52,11 @@ const WorkoutCard = ({
 
     return (
         <Animated.View style={[style, pressStyle]}>
-            <View
+            <TouchableOpacity
+                onPress={() => onPress(workout.id)}
+                onPressIn={onPressIn}
+                onPressOut={onPressOut}
+                activeOpacity={1}
                 style={{ backgroundColor: theme.surface }}
                 className="p-4 rounded-xl mb-3"
             >
@@ -101,7 +108,7 @@ const WorkoutCard = ({
                         <Trash size={16} color="#ef4444" weight="bold" />
                     </TouchableOpacity>
                 </View>
-            </View>
+            </TouchableOpacity>
         </Animated.View>
     );
 };
@@ -111,6 +118,7 @@ export const HistoryScreen = () => {
     const [workouts, setWorkouts] = useState<WorkoutWithExercises[]>([]);
     const [loading, setLoading] = useState(true);
     const scrollViewRef = useRef<ScrollView>(null);
+    const [selectedWorkoutId, setSelectedWorkoutId] = useState<number | null>(null);
 
     const loadWorkouts = useCallback(async () => {
         try {
@@ -219,41 +227,54 @@ export const HistoryScreen = () => {
         );
     }, [workouts]);
 
+    const handleOpenDetail = useCallback((workoutId: number) => {
+        setSelectedWorkoutId(workoutId);
+    }, []);
+
     return (
-        <ScrollView
-            ref={scrollViewRef}
-            style={{ backgroundColor: theme.background }}
-            className="flex-1 px-5 pt-16"
-            showsVerticalScrollIndicator={false}
-        >
-            <View>
-                <Text style={{ color: theme.text }} className="text-2xl font-bold mb-6">Histórico</Text>
-            </View>
-
-            <View>
-                <Text style={{ color: theme.text }} className="font-bold text-lg mb-3">
-                    {loading ? 'Carregando...' : `${workouts.length} treinos`}
-                </Text>
-            </View>
-
-            {workouts.map((workout) => (
-                <WorkoutCard
-                    key={workout.id}
-                    workout={workout}
-                    style={{}}
-                    onExport={handleExport}
-                    onDelete={handleDelete}
-                />
-            ))}
-
-            {!loading && workouts.length === 0 && (
-                <View className="items-center py-8">
-                    <Text style={{ color: theme.textSecondary }}>Nenhum treino registrado ainda</Text>
+        <>
+            <ScrollView
+                ref={scrollViewRef}
+                style={{ backgroundColor: theme.background }}
+                className="flex-1 px-5 pt-16"
+                showsVerticalScrollIndicator={false}
+            >
+                <View>
+                    <Text style={{ color: theme.text }} className="text-2xl font-bold mb-6">Histórico</Text>
                 </View>
-            )}
 
-            <View className="h-32" />
-        </ScrollView>
+                <View>
+                    <Text style={{ color: theme.text }} className="font-bold text-lg mb-3">
+                        {loading ? 'Carregando...' : `${workouts.length} treinos`}
+                    </Text>
+                </View>
+
+                {workouts.map((workout) => (
+                    <WorkoutCard
+                        key={workout.id}
+                        workout={workout}
+                        style={{}}
+                        onPress={handleOpenDetail}
+                        onExport={handleExport}
+                        onDelete={handleDelete}
+                    />
+                ))}
+
+                {!loading && workouts.length === 0 && (
+                    <View className="items-center py-8">
+                        <Text style={{ color: theme.textSecondary }}>Nenhum treino registrado ainda</Text>
+                    </View>
+                )}
+
+                <View className="h-32" />
+            </ScrollView>
+
+            <WorkoutDetailModal
+                visible={selectedWorkoutId !== null}
+                workoutId={selectedWorkoutId}
+                onClose={() => setSelectedWorkoutId(null)}
+            />
+        </>
     );
 };
 

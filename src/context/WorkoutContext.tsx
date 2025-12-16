@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import { SetType } from '../components/SetTypeModal';
 import {
     createExercise,
@@ -91,6 +92,17 @@ function mapSetTypeToDb(type: SetType): string {
     return type || 'N';
 }
 
+// Arquivo para persistência
+const WORKOUT_FILE_PATH = `${FileSystem.documentDirectory}activeWorkout.json`;
+
+// Interface para dados persistidos
+interface PersistedWorkout {
+    workoutId: number;
+    workoutName: string;
+    startedAt: number; // timestamp
+    exercises: WorkoutExercise[];
+}
+
 export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => {
     const [isActive, setIsActive] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
@@ -111,6 +123,88 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
 
     // Flag para evitar criar treino duplicado enquanto um está sendo criado
     const isCreatingWorkoutRef = useRef(false);
+
+    // Flag para evitar restaurar enquanto já está restaurando
+    const isRestoringRef = useRef(false);
+
+    // Salva estado do treino em arquivo
+    const persistWorkout = useCallback(async () => {
+        if (!workoutId || !startedAtRef.current) return;
+
+        const data: PersistedWorkout = {
+            workoutId,
+            workoutName,
+            startedAt: startedAtRef.current,
+            exercises,
+        };
+
+        try {
+            await FileSystem.writeAsStringAsync(WORKOUT_FILE_PATH, JSON.stringify(data));
+        } catch (error) {
+            console.error('[WorkoutContext] Error persisting workout:', error);
+        }
+    }, [workoutId, workoutName, exercises]);
+
+    // Limpa treino persistido
+    const clearPersistedWorkout = useCallback(async () => {
+        try {
+            const fileInfo = await FileSystem.getInfoAsync(WORKOUT_FILE_PATH);
+            if (fileInfo.exists) {
+                await FileSystem.deleteAsync(WORKOUT_FILE_PATH);
+            }
+        } catch (error) {
+            console.error('[WorkoutContext] Error clearing persisted workout:', error);
+        }
+    }, []);
+
+    // Restaura treino do arquivo (chamado no mount)
+    const restoreWorkout = useCallback(async () => {
+        if (isRestoringRef.current || isActive) return;
+        isRestoringRef.current = true;
+
+        try {
+            const fileInfo = await FileSystem.getInfoAsync(WORKOUT_FILE_PATH);
+            if (!fileInfo.exists) {
+                isRestoringRef.current = false;
+                return;
+            }
+
+            const stored = await FileSystem.readAsStringAsync(WORKOUT_FILE_PATH);
+            const data: PersistedWorkout = JSON.parse(stored);
+
+            // Restaura estado
+            setWorkoutId(data.workoutId);
+            setWorkoutName(data.workoutName);
+            setExercises(data.exercises);
+            startedAtRef.current = data.startedAt;
+
+            // Calcula duração desde o início
+            const elapsed = Math.floor((Date.now() - data.startedAt) / 1000);
+            setDuration(elapsed);
+
+            setIsActive(true);
+            setIsMinimized(true); // Começa minimizado para não atrapalhar
+
+            console.log(`[WorkoutContext] Restored workout #${data.workoutId}`);
+        } catch (error) {
+            console.error('[WorkoutContext] Error restoring workout:', error);
+            await clearPersistedWorkout();
+        } finally {
+            isRestoringRef.current = false;
+        }
+    }, [isActive, clearPersistedWorkout]);
+
+    // Restaura treino ao montar o provider
+    useEffect(() => {
+        restoreWorkout();
+    }, []);
+
+    // Persiste sempre que exercises mudar (com debounce implícito do React)
+    useEffect(() => {
+        if (isActive && workoutId) {
+            persistWorkout();
+        }
+    }, [isActive, workoutId, exercises, persistWorkout]);
 
     // Atualiza duration baseado no timestamp real (funciona mesmo em background)
     const updateDuration = useCallback(() => {
@@ -331,6 +425,7 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
         setIsMinimized(false);
         setWorkoutId(null);
         setExercises([]); // Limpa exercícios ao finalizar
+        await clearPersistedWorkout(); // Limpa storage
     };
 
     const cancelWorkout = async () => {
@@ -348,6 +443,7 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
         setIsMinimized(false);
         setWorkoutId(null);
         setExercises([]); // Limpa exercícios ao cancelar
+        await clearPersistedWorkout(); // Limpa storage
     };
 
     const addExercise = async (exerciseName: string, numSets: number = 3) => {
