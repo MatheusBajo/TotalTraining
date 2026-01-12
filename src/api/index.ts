@@ -9,7 +9,7 @@ const LOCAL_IP = '192.168.2.50'; // Seu IP local (fallback)
 // Rode: ngrok http 3001
 // Cole a URL HTTPS aqui (ex: 'https://abc123.ngrok-free.app')
 // Deixe null para auto-detectar na rede local
-const NGROK_URL: string | null = "https://unrefusing-monroe-unaldermanly.ngrok-free.dev";
+const NGROK_URL: string | null = 'https://unrefusing-monroe-unaldermanly.ngrok-free.dev';
 
 // Detecta o IP/host do Expo para conectar ao servidor
 function getBaseApiUrl(): string {
@@ -87,15 +87,10 @@ export async function initializeApi(): Promise<void> {
         });
 
         if (healthResponse.ok) {
-            // Servidor local acessível - verifica se tem ngrok
-            const ngrokUrl = await discoverNgrokUrl();
-            if (ngrokUrl) {
-                API_URL = ngrokUrl;
-                console.log(`[API] Using ngrok URL: ${API_URL}`);
-            } else {
-                API_URL = baseUrl;
-                console.log(`[API] Using local URL: ${API_URL}`);
-            }
+            // Servidor local acessível - usa URL local diretamente
+            // (não tenta descobrir ngrok automaticamente pra evitar URLs expiradas)
+            API_URL = baseUrl;
+            console.log(`[API] Using local URL: ${API_URL}`);
             isInitialized = true;
             return;
         }
@@ -256,6 +251,21 @@ export async function finishWorkoutBatch(
     });
 }
 
+export async function updateWorkout(
+    workoutId: number,
+    data: Partial<{
+        duration_seconds: number;
+        finished_at: string;
+        name: string;
+        notes: string;
+    }>
+): Promise<void> {
+    await fetchApi(`/api/workouts/${workoutId}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+}
+
 export async function deleteWorkout(workoutId: number): Promise<void> {
     await fetchApi(`/api/workouts/${workoutId}`, {
         method: 'DELETE',
@@ -279,6 +289,25 @@ export async function createExercise(data: {
         body: JSON.stringify(data),
     });
     return result.id;
+}
+
+export async function updateExercise(
+    exerciseId: number,
+    data: Partial<{
+        exercise_name: string;
+        notes: string;
+    }>
+): Promise<void> {
+    await fetchApi(`/api/exercises/${exerciseId}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    });
+}
+
+export async function deleteExercise(exerciseId: number): Promise<void> {
+    await fetchApi(`/api/exercises/${exerciseId}`, {
+        method: 'DELETE',
+    });
 }
 
 // ==================== SETS ====================
@@ -373,11 +402,19 @@ export async function createWorkoutBatch(data: {
 
 // ==================== STATISTICS ====================
 
+export interface StreakData {
+    current: number;
+    best: number;
+    trainedToday: boolean;
+    atRisk: boolean;
+    freezesAvailable: number;
+}
+
 export interface UserStats {
     totalTreinos: number;
     tempoTotal: string;
     volumeTotal: number;
-    streak: number;
+    streak: StreakData;
     metaSemanal: {
         atual: number;
         meta: number;
@@ -428,4 +465,98 @@ export async function checkServerHealth(): Promise<boolean> {
     } catch {
         return false;
     }
+}
+
+// ==================== EXERCISE DATABASE ====================
+
+export interface ExerciseDBItem {
+    id: string;
+    name: string;
+    primaryMuscles: string[];
+    secondaryMuscles: string[];
+    equipment: string;
+    category: string;
+    level: string;
+    images: string[];
+}
+
+export interface ExerciseDBFull extends ExerciseDBItem {
+    force: string | null;
+    mechanic: string | null;
+    instructions: string[];
+}
+
+export async function searchExercises(params: {
+    q?: string;
+    muscle?: string;
+    equipment?: string;
+    category?: string;
+    limit?: number;
+}): Promise<ExerciseDBItem[]> {
+    const searchParams = new URLSearchParams();
+    if (params.q) searchParams.append('q', params.q);
+    if (params.muscle) searchParams.append('muscle', params.muscle);
+    if (params.equipment) searchParams.append('equipment', params.equipment);
+    if (params.category) searchParams.append('category', params.category);
+    if (params.limit) searchParams.append('limit', params.limit.toString());
+
+    return fetchApi(`/api/exercise-db/search?${searchParams.toString()}`);
+}
+
+export async function getExerciseDetails(id: string): Promise<ExerciseDBFull | null> {
+    try {
+        return await fetchApi(`/api/exercise-db/${id}`);
+    } catch {
+        return null;
+    }
+}
+
+export async function getExerciseMuscles(): Promise<string[]> {
+    return fetchApi('/api/exercise-db/filters/muscles');
+}
+
+export async function getExerciseEquipment(): Promise<string[]> {
+    return fetchApi('/api/exercise-db/filters/equipment');
+}
+
+export async function getExerciseCategories(): Promise<string[]> {
+    return fetchApi('/api/exercise-db/filters/categories');
+}
+
+// ==================== EXERCISEDB PRIORITY (com GIFs) ====================
+
+export interface ExerciseDBPriority {
+    id: string;
+    name: string;
+    name_pt: string; // Nome em português
+    bodyPart: string;
+    equipment: string;
+    equipment_pt: string; // Equipamento em português
+    target: string;
+    secondaryMuscles: string[];
+    instructions: string[];
+    localImage: string; // nome do arquivo GIF local
+}
+
+export async function getExerciseDBPriority(params?: {
+    q?: string;
+    target?: string;
+    limit?: number;
+}): Promise<ExerciseDBPriority[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.q) searchParams.append('q', params.q);
+    if (params?.target) searchParams.append('target', params.target);
+    if (params?.limit) searchParams.append('limit', params.limit.toString());
+
+    const query = searchParams.toString();
+    return fetchApi(`/api/exercisedb/exercises${query ? '?' + query : ''}`);
+}
+
+export async function getExerciseDBTargets(): Promise<string[]> {
+    return fetchApi('/api/exercisedb/targets');
+}
+
+// Retorna a URL completa da imagem do exercício
+export function getExerciseImageUrl(localImage: string): string {
+    return `${API_URL}/images/${localImage}`;
 }
