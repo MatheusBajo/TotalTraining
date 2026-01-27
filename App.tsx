@@ -6,7 +6,6 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ThemeProvider, useTheme } from './src/theme';
-import { useEffect, useState } from 'react';
 
 import { WorkoutProvider, useWorkout } from './src/context/WorkoutContext';
 import { SheetAnimationProvider } from './src/context/SheetAnimationContext';
@@ -14,7 +13,8 @@ import { WorkoutBottomSheet } from './src/components/WorkoutBottomSheet';
 import { StandaloneTabBar } from './src/components/StandaloneTabBar';
 import { SheetBackdrop } from './src/components/SheetBackdrop';
 import { ActiveWorkoutModal } from './src/components/ActiveWorkoutModal';
-import { initializeApi, getConfiguredApiUrl } from './src/api';
+import { AuthProvider, useAuth } from './src/context/AuthContext';
+import LoginScreen from './src/screens/Auth/LoginScreen';
 
 // Componente separado para o modal (precisa estar dentro do WorkoutProvider)
 function ActiveWorkoutModalWrapper() {
@@ -33,39 +33,20 @@ function ActiveWorkoutModalWrapper() {
 
 function AppContent() {
   const { theme } = useTheme();
-  const [isReady, setIsReady] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const { user, loading } = useAuth();
 
-  useEffect(() => {
-    async function init() {
-      try {
-        await initializeApi();
-        console.log(`[App] API initialized at: ${getConfiguredApiUrl()}`);
-        setIsReady(true);
-      } catch (err) {
-        console.error('[App] Failed to initialize API:', err);
-        setError(err instanceof Error ? err : new Error('Unknown error'));
-      }
-    }
-    init();
-  }, []);
-
-  if (error) {
+  if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.background }}>
-        <Text style={{ color: '#ef4444', fontSize: 16 }}>Erro ao conectar com servidor</Text>
-        <Text style={{ color: theme.textSecondary, marginTop: 8 }}>{error.message}</Text>
+        <ActivityIndicator size="large" color={theme.primary} />
+        <Text style={{ color: theme.textSecondary, marginTop: 16 }}>Carregando...</Text>
       </View>
     );
   }
 
-  if (!isReady) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.background }}>
-        <ActivityIndicator size="large" color={theme.primary} />
-        <Text style={{ color: theme.textSecondary, marginTop: 16 }}>Conectando ao servidor...</Text>
-      </View>
-    );
+  // Se não tem usuário logado, mostra tela de login
+  if (!user) {
+    return <LoginScreen />;
   }
 
   return (
@@ -90,7 +71,9 @@ export default function App() {
   return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <ThemeProvider>
-          <AppContent />
+          <AuthProvider>
+            <AppContent />
+          </AuthProvider>
         </ThemeProvider>
       </GestureHandlerRootView>
   );

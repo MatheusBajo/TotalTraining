@@ -1,13 +1,14 @@
-import { View, Text, ScrollView, TouchableOpacity, Animated, Alert } from 'react-native';
-import React, { useCallback, useEffect, useState, useRef } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Animated, Alert, TextInput, SectionList, Image } from 'react-native';
+import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { useTheme } from '../theme';
 import * as Progress from 'react-native-progress';
 import { currentUser, treinos } from '../data';
-import { TrendUp, Fire, Barbell, Timer, Trophy, Export, Trash } from 'phosphor-react-native';
+import { TrendUp, Fire, Barbell, Timer, Trophy, Export, Trash, MagnifyingGlass, FunnelSimple, SignOut, UserMinus } from 'phosphor-react-native';
+import { useAuth } from '../context/AuthContext';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { usePressAnimation, useScreenAnimation } from '../hooks';
-import { getAllWorkouts, getExercisesByWorkout, getFullWorkout, deleteWorkout, WorkoutRecord, getUserStats, UserStats } from '../api';
+import { getAllWorkouts, getExercisesByWorkout, getFullWorkout, deleteWorkout, WorkoutRecord, getUserStats, UserStats, getExerciseDBPriority, getExerciseDBTargets, getExerciseImageUrl, ExerciseDBPriority } from '../api';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 import { WorkoutDetailModal } from '../components/WorkoutDetailModal';
@@ -84,8 +85,7 @@ const WorkoutCard = ({
                 </View>
 
                 <Text style={{ color: theme.textSecondary }} className="text-sm mb-3" numberOfLines={1}>
-                    {workout.exerciseNames.slice(0, 3).join(', ')}
-                    {workout.exerciseNames.length > 3 && '...'}
+                    {workout.exerciseNames.slice(0, 3).join(', ')}{workout.exerciseNames.length > 3 ? '...' : ''}
                 </Text>
 
                 {/* Botões de ação */}
@@ -273,89 +273,299 @@ export const HistoryScreen = () => {
                 visible={selectedWorkoutId !== null}
                 workoutId={selectedWorkoutId}
                 onClose={() => setSelectedWorkoutId(null)}
+                onWorkoutUpdated={loadWorkouts}
             />
         </>
     );
 };
 
-export const ExercisesScreen = () => {
-    const { theme } = useTheme();
-    const scrollViewRef = useRef<ScrollView>(null);
+// Traduz músculo alvo (target) para português
+const getTargetLabel = (target: string) => {
+    const translations: Record<string, string> = {
+        'pectorals': 'Peito',
+        'lats': 'Dorsais',
+        'delts': 'Deltoides',
+        'biceps': 'Bíceps',
+        'triceps': 'Tríceps',
+        'forearms': 'Antebraços',
+        'abs': 'Abdômen',
+        'quads': 'Quadríceps',
+        'hamstrings': 'Posterior',
+        'glutes': 'Glúteos',
+        'calves': 'Panturrilha',
+        'traps': 'Trapézio',
+        'upper back': 'Costas Superior',
+        'spine': 'Coluna',
+        'serratus anterior': 'Serrátil',
+        'levator scapulae': 'Elevador Escápula',
+        'cardiovascular system': 'Cardio',
+        'adductors': 'Adutores',
+        'abductors': 'Abdutores',
+    };
+    return translations[target?.toLowerCase()] || target || '';
+};
 
-    const exerciciosContagem: Record<string, number> = {};
-    treinos.forEach(treino => {
-        treino.exercicios.forEach(ex => {
-            exerciciosContagem[ex.nome] = (exerciciosContagem[ex.nome] || 0) + 1;
-        });
-    });
-
-    const exerciciosOrdenados = Object.entries(exerciciosContagem)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 15);
-
-    const { getItemStyle } = useScreenAnimation({
-        itemCount: exerciciosOrdenados.length + 1,
-        staggerDelay: 50,
-        duration: 400,
-        bounceHeight: 10,
-    });
-
-    // Volta ao topo quando a tela ganha foco
-    useFocusEffect(
-        useCallback(() => {
-            scrollViewRef.current?.scrollTo({ y: 0, animated: false });
-        }, [])
-    );
+// Componente de item de exercício (ExerciseDB com GIFs)
+const ExerciseItem = ({ exercise, theme }: { exercise: ExerciseDBPriority; theme: any }) => {
+    const imageUrl = exercise.localImage ? getExerciseImageUrl(exercise.localImage) : null;
+    const displayName = exercise.name_pt || exercise.name;
+    const displayEquipment = exercise.equipment_pt || exercise.equipment;
 
     return (
-        <ScrollView
-            ref={scrollViewRef}
-            style={{ backgroundColor: theme.background }}
-            className="flex-1 px-5 pt-16"
-            showsVerticalScrollIndicator={false}
+        <TouchableOpacity
+            style={{ backgroundColor: theme.surface, borderBottomColor: theme.borderSubtle }}
+            className="flex-row items-center px-4 py-3 border-b"
+            activeOpacity={0.7}
         >
-            <Animated.View style={getItemStyle(0)}>
-                <Text style={{ color: theme.text }} className="text-2xl font-bold mb-2">Exercícios</Text>
-                <Text style={{ color: theme.textSecondary }} className="mb-6">
-                    {Object.keys(exerciciosContagem).length} exercícios registrados
+            {/* Imagem GIF ou placeholder */}
+            <View
+                style={{ backgroundColor: theme.field }}
+                className="w-14 h-14 rounded-lg mr-3 overflow-hidden items-center justify-center"
+            >
+                {imageUrl ? (
+                    <Image
+                        source={{ uri: imageUrl }}
+                        style={{ width: 56, height: 56 }}
+                        resizeMode="cover"
+                    />
+                ) : (
+                    <Text style={{ color: theme.textSecondary }} className="text-2xl font-bold">
+                        {displayName.charAt(0).toUpperCase()}
+                    </Text>
+                )}
+            </View>
+
+            {/* Info */}
+            <View className="flex-1">
+                <Text style={{ color: theme.text }} className="font-semibold text-base" numberOfLines={1}>
+                    {displayName}
                 </Text>
-            </Animated.View>
+                <Text style={{ color: theme.textSecondary }} className="text-sm" numberOfLines={1}>
+                    {getTargetLabel(exercise.target)} • {displayEquipment}
+                </Text>
+            </View>
+        </TouchableOpacity>
+    );
+};
 
-            {exerciciosOrdenados.map(([nome, count], index) => {
-                const { onPressIn, onPressOut, animatedStyle: pressStyle } = usePressAnimation();
+export const ExercisesScreen = () => {
+    const { theme } = useTheme();
+    const sectionListRef = useRef<SectionList>(null);
+    const [exercises, setExercises] = useState<ExerciseDBPriority[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
+    const [targets, setTargets] = useState<string[]>([]);
+    const [showFilters, setShowFilters] = useState(false);
 
-                return (
-                    <Animated.View key={index} style={[getItemStyle(index + 1), pressStyle]}>
-                        <TouchableOpacity
-                            style={{ backgroundColor: theme.surface }}
-                            className="p-4 rounded-xl mb-2 flex-row justify-between items-center"
-                            onPressIn={onPressIn}
-                            onPressOut={onPressOut}
-                            activeOpacity={1}
+    // Carrega exercícios do ExerciseDB com GIFs
+    const loadExercises = useCallback(async () => {
+        setLoading(true);
+        try {
+            const results = await getExerciseDBPriority({
+                q: searchQuery || undefined,
+                target: selectedTarget || undefined,
+                limit: 100,
+            });
+            setExercises(results);
+        } catch (error) {
+            console.error('[ExercisesScreen] Error loading exercises:', error);
+        } finally {
+            setLoading(false);
+        }
+    }, [searchQuery, selectedTarget]);
+
+    // Carrega filtros ao montar
+    useEffect(() => {
+        const loadFilters = async () => {
+            try {
+                const targetList = await getExerciseDBTargets();
+                setTargets(targetList);
+            } catch (error) {
+                console.error('[ExercisesScreen] Error loading filters:', error);
+            }
+        };
+        loadFilters();
+    }, []);
+
+    // Recarrega quando filtros mudam
+    useEffect(() => {
+        loadExercises();
+    }, [loadExercises]);
+
+    // Agrupa exercícios por letra (usando nome em português)
+    const sections = useMemo(() => {
+        const grouped: Record<string, ExerciseDBPriority[]> = {};
+
+        exercises.forEach(ex => {
+            const displayName = ex.name_pt || ex.name;
+            const letter = displayName.charAt(0).toUpperCase();
+            if (!grouped[letter]) {
+                grouped[letter] = [];
+            }
+            grouped[letter].push(ex);
+        });
+
+        return Object.keys(grouped)
+            .sort()
+            .map(letter => ({
+                title: letter,
+                data: grouped[letter].sort((a, b) => {
+                    const nameA = a.name_pt || a.name;
+                    const nameB = b.name_pt || b.name;
+                    return nameA.localeCompare(nameB);
+                }),
+            }));
+    }, [exercises]);
+
+    // Letras disponíveis para o índice
+    const availableLetters = useMemo(() => sections.map(s => s.title), [sections]);
+
+    // Scroll para letra
+    const scrollToLetter = useCallback((letter: string) => {
+        const sectionIndex = sections.findIndex(s => s.title === letter);
+        if (sectionIndex >= 0 && sectionListRef.current) {
+            sectionListRef.current.scrollToLocation({
+                sectionIndex,
+                itemIndex: 0,
+                viewOffset: 50,
+                animated: true,
+            });
+        }
+    }, [sections]);
+
+    return (
+        <View style={{ backgroundColor: theme.background }} className="flex-1">
+            {/* Header */}
+            <View className="px-4 pt-16 pb-2">
+                <View className="flex-row justify-between items-center mb-4">
+                    <TouchableOpacity>
+                        <Text style={{ color: theme.primary }} className="text-base font-semibold">Novo</Text>
+                    </TouchableOpacity>
+                    <Text style={{ color: theme.text }} className="text-lg font-bold">Exercícios</Text>
+                    <TouchableOpacity>
+                        <Text style={{ color: theme.primary }} className="text-xl">•••</Text>
+                    </TouchableOpacity>
+                </View>
+
+                {/* Search Bar */}
+                <View
+                    style={{ backgroundColor: theme.field }}
+                    className="flex-row items-center px-3 py-2 rounded-lg mb-3"
+                >
+                    <MagnifyingGlass size={20} color={theme.textSecondary} />
+                    <TextInput
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        placeholder="Pesquisar exercício..."
+                        placeholderTextColor={theme.textSecondary}
+                        style={{ color: theme.text }}
+                        className="flex-1 ml-2 text-base"
+                    />
+                </View>
+
+                {/* Filter Button */}
+                <View className="flex-row mb-2">
+                    <TouchableOpacity
+                        onPress={() => setShowFilters(!showFilters)}
+                        style={{ backgroundColor: selectedTarget ? theme.primary : theme.field }}
+                        className="flex-1 mr-2 py-2 px-3 rounded-lg"
+                    >
+                        <Text
+                            style={{ color: selectedTarget ? '#fff' : theme.text }}
+                            className="text-center text-sm font-medium"
                         >
-                            <View className="flex-row items-center flex-1">
-                                <View
-                                    style={{ backgroundColor: theme.primary + '20' }}
-                                    className="w-8 h-8 rounded-full items-center justify-center mr-3"
-                                >
-                                    <Text style={{ color: theme.primary }} className="font-bold text-sm">
-                                        {index + 1}
-                                    </Text>
-                                </View>
-                                <Text style={{ color: theme.text }} className="font-medium flex-1" numberOfLines={1}>
-                                    {nome}
-                                </Text>
-                            </View>
-                            <Text style={{ color: theme.textSecondary }} className="text-sm">
-                                {count}x
-                            </Text>
-                        </TouchableOpacity>
-                    </Animated.View>
-                );
-            })}
+                            {selectedTarget ? getTargetLabel(selectedTarget) : 'Qualquer músculo'}
+                        </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        onPress={() => setShowFilters(!showFilters)}
+                        style={{ backgroundColor: theme.field }}
+                        className="py-2 px-3 rounded-lg"
+                    >
+                        <FunnelSimple size={20} color={theme.text} />
+                    </TouchableOpacity>
+                </View>
 
-            <View className="h-32" />
-        </ScrollView>
+                {/* Filtros expandidos */}
+                {showFilters && (
+                    <View className="mb-2">
+                        <Text style={{ color: theme.textSecondary }} className="text-xs mb-2">MÚSCULO ALVO:</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                            <TouchableOpacity
+                                onPress={() => setSelectedTarget(null)}
+                                style={{ backgroundColor: !selectedTarget ? theme.primary : theme.field }}
+                                className="px-3 py-1 rounded-full mr-2"
+                            >
+                                <Text style={{ color: !selectedTarget ? '#fff' : theme.text }} className="text-sm">
+                                    Todos
+                                </Text>
+                            </TouchableOpacity>
+                            {targets.map(target => (
+                                <TouchableOpacity
+                                    key={target}
+                                    onPress={() => setSelectedTarget(target === selectedTarget ? null : target)}
+                                    style={{ backgroundColor: selectedTarget === target ? theme.primary : theme.field }}
+                                    className="px-3 py-1 rounded-full mr-2"
+                                >
+                                    <Text style={{ color: selectedTarget === target ? '#fff' : theme.text }} className="text-sm">
+                                        {getTargetLabel(target)}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+                )}
+            </View>
+
+            {/* Exercise List */}
+            <View className="flex-1 flex-row">
+                <SectionList
+                    ref={sectionListRef}
+                    sections={sections}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => <ExerciseItem exercise={item} theme={theme} />}
+                    renderSectionHeader={({ section: { title } }) => (
+                        <View style={{ backgroundColor: theme.background }} className="px-4 py-2">
+                            <Text style={{ color: theme.textSecondary }} className="text-sm font-bold">
+                                {title}
+                            </Text>
+                        </View>
+                    )}
+                    stickySectionHeadersEnabled={true}
+                    className="flex-1"
+                    contentContainerStyle={{ paddingBottom: 120 }}
+                    showsVerticalScrollIndicator={false}
+                    initialNumToRender={20}
+                    maxToRenderPerBatch={20}
+                    onScrollToIndexFailed={() => {}}
+                    ListEmptyComponent={
+                        <View className="items-center py-8">
+                            <Text style={{ color: theme.textSecondary }}>
+                                {loading ? 'Carregando...' : 'Nenhum exercício encontrado'}
+                            </Text>
+                        </View>
+                    }
+                />
+
+                {/* Índice alfabético lateral */}
+                {availableLetters.length > 0 && (
+                    <View className="absolute right-0 top-0 bottom-0 justify-center pr-1">
+                        {availableLetters.map(letter => (
+                            <TouchableOpacity
+                                key={letter}
+                                onPress={() => scrollToLetter(letter)}
+                                className="py-0.5 px-1"
+                            >
+                                <Text style={{ color: theme.primary }} className="text-xs font-bold">
+                                    {letter}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                )}
+            </View>
+        </View>
     );
 };
 
@@ -366,16 +576,66 @@ const defaultStats: UserStats = {
     totalTreinos: 0,
     tempoTotal: '0h 0min',
     volumeTotal: 0,
-    streak: 0,
+    streak: {
+        current: 0,
+        best: 0,
+        trainedToday: false,
+        atRisk: false,
+        freezesAvailable: 1
+    },
     metaSemanal: { atual: 0, meta: 4 },
     progressao: []
 };
 
 export const ProfileScreen = () => {
     const { theme } = useTheme();
+    const { user, signOut, deleteAccount } = useAuth();
     const [stats, setStats] = useState<UserStats>(defaultStats);
     const [loading, setLoading] = useState(true);
     const scrollViewRef = useRef<ScrollView>(null);
+
+    const handleLogout = () => {
+        Alert.alert(
+            'Sair da conta',
+            'Tem certeza que deseja sair?',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Sair',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await signOut();
+                        } catch (error: any) {
+                            Alert.alert('Erro', error.message);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const handleDeleteAccount = () => {
+        Alert.alert(
+            'Excluir conta',
+            'Tem certeza que deseja excluir sua conta?\n\nTodos os seus treinos serão apagados permanentemente. Esta ação não pode ser desfeita.',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Excluir',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await deleteAccount();
+                            Alert.alert('Conta excluída', 'Seus dados foram removidos.');
+                        } catch (error: any) {
+                            Alert.alert('Erro', error.message);
+                        }
+                    }
+                }
+            ]
+        );
+    };
 
     // Carrega stats do banco
     const loadStats = useCallback(async () => {
@@ -463,13 +723,26 @@ export const ProfileScreen = () => {
 
                 <View style={{ backgroundColor: theme.surface }} className="flex-1 ml-2 p-4 rounded-xl items-center">
                     <View className="items-center justify-center h-[70px]">
-                        <Fire size={32} color="#f97316" weight="fill" />
+                        <Fire
+                            size={32}
+                            color={stats.streak.atRisk ? '#fbbf24' : '#f97316'}
+                            weight="fill"
+                        />
                         <Text style={{ color: theme.text }} className="text-2xl font-bold mt-1">
-                            {stats.streak}
+                            {stats.streak.current}
                         </Text>
                     </View>
-                    <Text style={{ color: theme.textSecondary }} className="text-xs mt-2">Streak</Text>
-                    <Text style={{ color: theme.text }} className="font-bold">dias seguidos</Text>
+                    <Text style={{ color: theme.textSecondary }} className="text-xs mt-2">
+                        {stats.streak.atRisk ? 'Streak em risco!' : 'Streak'}
+                    </Text>
+                    <Text style={{ color: theme.text }} className="font-bold">
+                        {stats.streak.trainedToday ? 'treinou hoje' : 'dias seguidos'}
+                    </Text>
+                    {stats.streak.best > stats.streak.current && (
+                        <Text style={{ color: theme.textSecondary }} className="text-xs mt-1">
+                            Recorde: {stats.streak.best}
+                        </Text>
+                    )}
                 </View>
             </Animated.View>
 
@@ -527,7 +800,7 @@ export const ProfileScreen = () => {
                                 className="ml-2 px-2 py-0.5 rounded"
                             >
                                 <Text style={{ color: prog.evolucao >= 0 ? '#22c55e' : '#ef4444' }} className="text-xs font-bold">
-                                    {prog.evolucao >= 0 ? '+' : ''}{prog.evolucao}%
+                                    {prog.evolucao >= 0 ? '+' : ''}{prog.evolucao}kg
                                 </Text>
                             </View>
                         </View>
@@ -551,6 +824,34 @@ export const ProfileScreen = () => {
                         </View>
                     ))}
                 </View>
+            </Animated.View>
+
+            {/* Conta */}
+            <Animated.View style={[getItemStyle(5), { backgroundColor: theme.surface }]} className="p-4 rounded-xl mb-4">
+                <Text style={{ color: theme.text }} className="font-bold text-lg mb-3">Conta</Text>
+
+                {user?.email && (
+                    <Text style={{ color: theme.textSecondary }} className="text-sm mb-4">
+                        {user.email}
+                    </Text>
+                )}
+
+                <TouchableOpacity
+                    onPress={handleLogout}
+                    className="flex-row items-center py-3 border-b"
+                    style={{ borderColor: theme.borderSubtle }}
+                >
+                    <SignOut size={20} color={theme.textSecondary} />
+                    <Text style={{ color: theme.text }} className="ml-3 flex-1">Sair da conta</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    onPress={handleDeleteAccount}
+                    className="flex-row items-center py-3"
+                >
+                    <UserMinus size={20} color="#ef4444" />
+                    <Text style={{ color: '#ef4444' }} className="ml-3 flex-1">Excluir conta</Text>
+                </TouchableOpacity>
             </Animated.View>
 
             <View className="h-32" />

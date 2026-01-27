@@ -13,6 +13,9 @@ import {
     getPRsBatch,
     SetPR,
     FinishSetData,
+    updateExercise,
+    deleteExercise,
+    deleteSet as deleteSetApi,
 } from '../api';
 
 // Helper para pegar data/hora local (não UTC)
@@ -64,6 +67,7 @@ interface WorkoutContextData {
     workoutName: string;
     workoutId: number | null;  // ID do treino no banco
     duration: number;
+    startedAt: number | null;  // Timestamp de início
     exercises: WorkoutExercise[];
     // Modal de treino ativo
     showActiveModal: boolean;
@@ -83,6 +87,9 @@ interface WorkoutContextData {
     toggleSet: (exerciseId: string, setId: string) => void;
     changeSetType: (exerciseId: string, setId: string, type: SetType) => void;
     fillFromPR: (exerciseId: string, setId: string) => void;
+    replaceExercise: (exerciseId: string, newExerciseName: string) => Promise<void>;
+    removeExercise: (exerciseId: string) => Promise<void>;
+    removeSet: (exerciseId: string, setId: string) => Promise<void>;
 }
 
 const WorkoutContext = createContext<WorkoutContextData>({} as WorkoutContextData);
@@ -593,6 +600,88 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
         }));
     }, []);
 
+    // Substitui um exercício por outro (mantém as séries vazias)
+    const replaceExercise = async (exerciseId: string, newExerciseName: string) => {
+        const exercise = exercises.find(ex => ex.id === exerciseId);
+        if (!exercise || !exercise.dbId) return;
+
+        try {
+            // Atualiza no banco
+            await updateExercise(exercise.dbId, { exercise_name: newExerciseName });
+
+            // Busca nova última performance
+            const prevStats = await getLastStats(newExerciseName);
+
+            // Atualiza estado local
+            setExercises(prev => prev.map(ex => {
+                if (ex.id !== exerciseId) return ex;
+                return {
+                    ...ex,
+                    name: newExerciseName,
+                    sets: ex.sets.map(s => ({
+                        ...s,
+                        prev: prevStats,
+                        prData: undefined, // Limpa PR data do exercício anterior
+                        kg: '',
+                        reps: '',
+                        rir: '',
+                        completed: false,
+                    }))
+                };
+            }));
+
+            console.log(`[WorkoutContext] Replaced exercise to: ${newExerciseName}`);
+        } catch (error) {
+            console.error('[WorkoutContext] Error replacing exercise:', error);
+        }
+    };
+
+    // Remove um exercício do treino
+    const removeExercise = async (exerciseId: string) => {
+        const exercise = exercises.find(ex => ex.id === exerciseId);
+        if (!exercise || !exercise.dbId) return;
+
+        try {
+            // Deleta do banco (cascade vai deletar as séries)
+            await deleteExercise(exercise.dbId);
+
+            // Remove do estado local
+            setExercises(prev => prev.filter(ex => ex.id !== exerciseId));
+
+            console.log(`[WorkoutContext] Removed exercise: ${exercise.name}`);
+        } catch (error) {
+            console.error('[WorkoutContext] Error removing exercise:', error);
+        }
+    };
+
+    // Remove uma série de um exercício
+    const removeSet = async (exerciseId: string, setId: string) => {
+        const exercise = exercises.find(ex => ex.id === exerciseId);
+        if (!exercise) return;
+
+        const set = exercise.sets.find(s => s.id === setId);
+
+        try {
+            // Se tem dbId, deleta do banco
+            if (set?.dbId) {
+                await deleteSetApi(set.dbId);
+            }
+
+            // Remove do estado local
+            setExercises(prev => prev.map(ex => {
+                if (ex.id !== exerciseId) return ex;
+                return {
+                    ...ex,
+                    sets: ex.sets.filter(s => s.id !== setId)
+                };
+            }));
+
+            console.log(`[WorkoutContext] Removed set from: ${exercise.name}`);
+        } catch (error) {
+            console.error('[WorkoutContext] Error removing set:', error);
+        }
+    };
+
     return (
         <WorkoutContext.Provider value={{
             isActive,
@@ -600,6 +689,7 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
             workoutName,
             workoutId,
             duration,
+            startedAt: startedAtRef.current,
             exercises,
             // Modal
             showActiveModal,
@@ -619,7 +709,10 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
             updateSet,
             toggleSet,
             changeSetType,
-            fillFromPR
+            fillFromPR,
+            replaceExercise,
+            removeExercise,
+            removeSet,
         }}>
             {children}
         </WorkoutContext.Provider>
