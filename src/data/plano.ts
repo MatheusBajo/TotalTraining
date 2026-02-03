@@ -1,370 +1,179 @@
 import { PlanoTreino, TemplateTreino } from '../types';
 
-export const segunda: TemplateTreino = {
-    id: 'segunda',
-    nome: 'Segunda - Push',
-    dia: 'Segunda',
-    focoPrincipal: 'Peito/Tríceps/Ombro',
-    aquecimento: '5min esteira + rotação de ombros',
-    volumeTotal: 16,
+// TREINO A 2.0 - Perna + Empurrar + Ombro Lateral
+export const treinoA: TemplateTreino = {
+    id: 'treino-a',
+    nome: 'Treino A',
+    dia: 'Segunda/Quinta',
+    focoPrincipal: 'Perna + Empurrar + Ombro Lateral',
+    aquecimento: '5min + mobilidade de quadril e ombros',
+    volumeTotal: 14,
     tempoEstimado: '50-60min',
     exercicios: [
         {
-            id: '1',
-            nome: 'Supino inclinado halter',
-            grupoMuscular: 'Peito',
-            series: 4,
+            id: '1a',
+            nome: 'Agachamento Livre',
+            grupoMuscular: 'Quadríceps/Glúteos',
+            series: 3,
             reps: '6-8',
-            rir: 1,
-            descanso: '2-3min',
-            notas: 'Foco peito superior. Banco 30°'
+            rir: 2,
+            descanso: '0s',
+            notas: 'SUPERSET com Barra Fixa. Carga de "medo" (30kg+). Base sólida.'
         },
         {
-            id: '2',
-            nome: 'Paralelas',
+            id: '1b',
+            nome: 'Barra Fixa (Peso)',
+            grupoMuscular: 'Costas/Bíceps',
+            series: 3,
+            reps: '4-6',
+            rir: 2,
+            descanso: '2-3min',
+            notas: 'SUPERSET. Costas e bíceps. Pegada pronada.'
+        },
+        {
+            id: '2a',
+            nome: 'Paralelas (Peso)',
             grupoMuscular: 'Peito/Tríceps',
             series: 3,
             reps: '6-8',
+            rir: 2,
+            descanso: '0s',
+            notas: 'SUPERSET com Elevação Lateral. Peito inferior e tríceps.'
+        },
+        {
+            id: '2b',
+            nome: 'Elevação Lateral',
+            grupoMuscular: 'Ombros',
+            series: 3,
+            reps: '12-15',
             rir: 1,
-            descanso: '2-3min',
-            notas: 'Inclinar tronco pra frente = mais peitoral'
+            descanso: '90s',
+            notas: 'SUPERSET. Ombro lateral fresco enquanto peito/tríceps descansa.'
         },
         {
             id: '3',
-            nome: 'Elevação lateral',
-            grupoMuscular: 'Ombros',
-            series: 3,
+            nome: 'Coice Inclinado',
+            grupoMuscular: 'Tríceps',
+            series: 2,
             reps: '10-12',
             rir: 1,
             descanso: '60-90s',
-            notas: 'Levemente inclinado pra frente'
-        },
-        {
-            id: '4',
-            nome: 'Coice inclinado',
-            grupoMuscular: 'Tríceps',
-            series: 3,
-            reps: '10-12',
-            rir: 1,
-            descanso: '60-90s',
-            notas: 'Banco +30°. Cabeça longa do tríceps'
-        },
-        {
-            id: '5',
-            nome: 'Pushdown corda unilateral',
-            grupoMuscular: 'Tríceps',
-            series: 3,
-            reps: '10-12',
-            rir: 0,
-            descanso: '60s',
-            notas: 'Última série até falha'
+            notas: 'Finalizador de tríceps. Banco +30°, cabeça longa.'
         }
     ]
 };
 
-export const terca: TemplateTreino = {
-    id: 'terca',
-    nome: 'Terça - Lower Quad',
-    dia: 'Terça',
-    focoPrincipal: 'Lower Quad Focus',
-    aquecimento: '5min bike + mobilidade de quadril',
-    volumeTotal: 19,
+// TREINO B 2.0 - Posterior Isolado + Upper + Antebraço
+export const treinoB: TemplateTreino = {
+    id: 'treino-b',
+    nome: 'Treino B',
+    dia: 'Terça/Sexta',
+    focoPrincipal: 'Posterior Isolado + Upper + Antebraço',
+    aquecimento: '5min + mobilidade de quadril',
+    volumeTotal: 15,
     tempoEstimado: '55-65min',
     exercicios: [
         {
-            id: '1',
-            nome: 'Agachamento narrow',
-            grupoMuscular: 'Quadríceps',
-            series: 5,
+            id: '1a',
+            nome: 'RDL (Stiff)',
+            grupoMuscular: 'Posterior/Quadril',
+            series: 3,
             reps: '6-8',
-            rir: 1,
-            descanso: '3-4min',
-            notas: 'Pés mais juntos. Profundo'
+            rir: 2,
+            descanso: '0s',
+            notas: 'SUPERSET com Supino. Cadeia posterior pesada.'
         },
         {
-            id: '2',
-            nome: 'Búlgaro',
-            grupoMuscular: 'Quadríceps/Glúteo',
-            series: 4,
+            id: '1b',
+            nome: 'Supino Inclinado Halter',
+            grupoMuscular: 'Peito Superior',
+            series: 3,
             reps: '8-10',
             rir: 2,
-            descanso: '90s cada perna',
-            notas: 'Por perna. Joelho da frente não passa do pé'
-        },
-        {
-            id: '3',
-            nome: 'RDL',
-            grupoMuscular: 'Posterior',
-            series: 4,
-            reps: '8-10',
-            rir: 1,
-            descanso: '2min',
-            notas: 'Romanian Deadlift. Joelho levemente flexionado'
-        },
-        {
-            id: '4a',
-            nome: 'Leg press pés juntos',
-            grupoMuscular: 'Quadríceps',
-            series: 3,
-            reps: '10-12',
-            rir: 1,
-            descanso: '0s',
-            notas: 'SUPERSET com Leg curl. Pés baixos e juntos'
-        },
-        {
-            id: '4b',
-            nome: 'Leg curl em pé',
-            grupoMuscular: 'Posterior',
-            series: 3,
-            reps: '10-12',
-            rir: 1,
-            descanso: '90s',
-            notas: 'SUPERSET. Controlar excêntrico'
-        },
-        {
-            id: '5',
-            nome: 'Panturrilha em pé',
-            grupoMuscular: 'Panturrilha',
-            series: 3,
-            reps: '10-12',
-            rir: 0,
-            descanso: '60s',
-            notas: 'Pausa embaixo (alongado). Até falha'
-        }
-    ]
-};
-
-export const quinta: TemplateTreino = {
-    id: 'quinta',
-    nome: 'Quinta - Pull',
-    dia: 'Quinta',
-    focoPrincipal: 'Pull/Ombro/Peito',
-    aquecimento: '5min + 2x8 barra fixa sem peso',
-    volumeTotal: 21,
-    tempoEstimado: '60-70min',
-    exercicios: [
-        {
-            id: '1',
-            nome: 'Barra fixa com peso',
-            grupoMuscular: 'Costas',
-            series: 4,
-            reps: '3-5',
-            rir: 1,
-            descanso: '3min',
-            notas: '+25-30kg. Pegada pronada, média-aberta'
-        },
-        {
-            id: '2',
-            nome: 'Remada cavalinho',
-            grupoMuscular: 'Costas',
-            series: 3,
-            reps: '6-8',
-            rir: 1,
             descanso: '2-3min',
-            notas: 'T-bar row. Puxar pro umbigo'
+            notas: 'SUPERSET. Banco 30°. Foco peito superior.'
         },
         {
-            id: '3',
-            nome: 'Supino inclinado halter',
-            grupoMuscular: 'Peito',
-            series: 3,
-            reps: '8-10',
-            rir: 1,
-            descanso: '2min',
-            notas: 'Volume extra peito superior'
-        },
-        {
-            id: '4a',
-            nome: 'Development',
-            grupoMuscular: 'Ombros',
-            series: 3,
-            reps: '8-10',
-            rir: 1,
-            descanso: '0s',
-            notas: 'SUPERSET com Rosca martelo'
-        },
-        {
-            id: '4b',
-            nome: 'Rosca martelo',
-            grupoMuscular: 'Bíceps/Braquial',
-            series: 3,
-            reps: '10-12',
-            rir: 1,
-            descanso: '90s',
-            notas: 'SUPERSET. Sem balançar'
-        },
-        {
-            id: '5a',
-            nome: 'Encolhimento halter unilateral',
-            grupoMuscular: 'Trapézio',
+            id: '2a',
+            nome: 'Mesa Flexora (Leg Curl)',
+            grupoMuscular: 'Posterior',
             series: 3,
             reps: '10-12',
             rir: 1,
             descanso: '0s',
-            notas: 'SUPERSET com Elevação lateral'
+            notas: 'SUPERSET com Remada. Essencial para posterior isolado.'
         },
         {
-            id: '5b',
-            nome: 'Elevação lateral',
-            grupoMuscular: 'Ombros',
-            series: 3,
-            reps: '10-12',
-            rir: 1,
-            descanso: '60s',
-            notas: 'SUPERSET. Levemente inclinado'
-        },
-        {
-            id: '6',
-            nome: 'Remada inclinada 45°',
+            id: '2b',
+            nome: 'Remada (Máquina/Curvada)',
             grupoMuscular: 'Costas',
             series: 3,
-            reps: '10-12',
-            rir: 1,
-            descanso: '90s',
-            notas: 'Peito apoiado no banco inclinado'
-        }
-    ]
-};
-
-export const sextaSab: TemplateTreino = {
-    id: 'sexta-sab',
-    nome: 'Sexta/Sáb - Posterior',
-    dia: 'Sexta',
-    focoPrincipal: 'Lower Posterior + Arms',
-    aquecimento: '5min + mobilidade de quadril',
-    volumeTotal: 22,
-    tempoEstimado: '55-65min',
-    exercicios: [
-        {
-            id: '1',
-            nome: 'RDL',
-            grupoMuscular: 'Posterior',
-            series: 4,
             reps: '8-10',
-            rir: 1,
-            descanso: '2-3min',
-            notas: 'Romanian Deadlift. Principal do dia'
-        },
-        {
-            id: '2',
-            nome: 'Leg curl em pé',
-            grupoMuscular: 'Posterior',
-            series: 4,
-            reps: '10-12',
-            rir: 1,
+            rir: 2,
             descanso: '90s',
-            notas: 'Unilateral se possível'
+            notas: 'SUPERSET. Espessura. Puxar pro umbigo.'
         },
         {
-            id: '3',
-            nome: 'Flexora deitado',
-            grupoMuscular: 'Posterior',
+            id: '3a',
+            nome: 'Pullover (Polia/Halter)',
+            grupoMuscular: 'Costas/Serrátil',
             series: 3,
             reps: '10-12',
-            rir: 0,
-            descanso: '90s',
-            notas: 'Até falha. Controlar excêntrico'
+            rir: 1,
+            descanso: '0s',
+            notas: 'SUPERSET com Rosca Martelo. Para o Front Lever.'
         },
         {
-            id: '4',
-            nome: 'Coice inclinado',
-            grupoMuscular: 'Tríceps',
+            id: '3b',
+            nome: 'Rosca Martelo',
+            grupoMuscular: 'Bíceps/Antebraço',
             series: 3,
             reps: '10-12',
             rir: 1,
             descanso: '60-90s',
-            notas: 'Banco +30°'
-        },
-        {
-            id: '5',
-            nome: 'Reverse curl',
-            grupoMuscular: 'Antebraço',
-            series: 3,
-            reps: '10-12',
-            rir: 1,
-            descanso: '60s',
-            notas: 'Rosca inversa. Pegada pronada'
-        },
-        {
-            id: '6a',
-            nome: "Farmer's walk snatch grip",
-            grupoMuscular: 'Trapézio/Core',
-            series: 3,
-            reps: '40s',
-            descanso: '0s',
-            notas: 'SUPERSET com Panturrilha. Pegada larga'
-        },
-        {
-            id: '6b',
-            nome: 'Panturrilha sentado',
-            grupoMuscular: 'Panturrilha',
-            series: 3,
-            reps: '10-12',
-            rir: 0,
-            descanso: '60s',
-            notas: 'SUPERSET. Até falha'
-        },
-        {
-            id: '7a',
-            nome: 'Neck curl',
-            grupoMuscular: 'Pescoço',
-            series: 2,
-            reps: '10-12',
-            rir: 0,
-            descanso: '0s',
-            notas: 'SUPERSET com Neck extension. Deitado'
-        },
-        {
-            id: '7b',
-            nome: 'Neck extension',
-            grupoMuscular: 'Pescoço',
-            series: 2,
-            reps: '10-12',
-            rir: 0,
-            descanso: '60s',
-            notas: 'SUPERSET. De bruços'
+            notas: 'SUPERSET. Bíceps + antebraço. Sem balançar.'
         }
     ]
 };
 
 export const planoAtual: PlanoTreino = {
-    id: 'hypertrophy-2025',
-    nome: 'Hipertrofia 2025',
-    descricao: 'Programa focado em hipertrofia com RIR baixo e supersets para densidade',
+    id: 'fullbody-ab-2025',
+    nome: 'A/B 2.0',
+    objetivo: 'Hipertrofia com eficiência - supersets para densidade',
+    descricao: 'Programa A/B alternado. Semana 1: A-B-A-B-A (3A, 2B). Semana 2: B-A-B-A-B (3B, 2A).',
     criadoEm: 'Dezembro 2025',
     proximaRevisao: '8-12 semanas',
     estruturaSemanal: [
-        { dia: 'Segunda', treino: 'Push', focoPrincipal: 'Peito/Tríceps/Ombro' },
-        { dia: 'Terça', treino: 'Lower Quad', focoPrincipal: 'Quadríceps + Posterior' },
-        { dia: 'Quarta', treino: 'Descanso', focoPrincipal: '—' },
-        { dia: 'Quinta', treino: 'Pull', focoPrincipal: 'Costas/Bíceps/Ombro/Peito' },
-        { dia: 'Sexta/Sáb', treino: 'Posterior', focoPrincipal: 'Posterior + Arms' }
+        { dia: 'Segunda', treino: 'Treino A', focoPrincipal: 'Perna + Empurrar' },
+        { dia: 'Terça', treino: 'Treino B', focoPrincipal: 'Posterior + Upper' },
+        { dia: 'Quarta', treino: 'Treino A', focoPrincipal: 'Perna + Empurrar' },
+        { dia: 'Quinta', treino: 'Treino B', focoPrincipal: 'Posterior + Upper' },
+        { dia: 'Sexta', treino: 'Treino A', focoPrincipal: 'Perna + Empurrar' },
+        { dia: 'Sábado', treino: 'Descanso', focoPrincipal: '' },
+        { dia: 'Domingo', treino: 'Descanso', focoPrincipal: '' }
     ],
-    templates: [segunda, terca, quinta, sextaSab],
+    templates: [treinoA, treinoB],
     volumeSemanal: [
-        { grupo: 'Peito', series: 10, status: 'Bom' },
-        { grupo: 'Costas', series: 13, status: 'Bom' },
-        { grupo: 'Ombros (lateral)', series: 9, status: 'Priorizado' },
-        { grupo: 'Tríceps', series: 12, status: 'Priorizado' },
-        { grupo: 'Bíceps/Braquial', series: 6, status: 'Manutenção' },
-        { grupo: 'Quadríceps', series: 12, status: 'Bom' },
-        { grupo: 'Posterior', series: 14, status: 'Priorizado' },
-        { grupo: 'Panturrilha', series: 6, status: 'Manutenção' },
-        { grupo: 'Trapézio', series: 6, status: 'Incluído' },
-        { grupo: 'Antebraço', series: 3, status: 'Incluído' },
-        { grupo: 'Pescoço', series: 4, status: 'Incluído' }
+        { grupo: 'Quadríceps', series: 9, status: 'Via Agachamento (média 2.5x/sem)' },
+        { grupo: 'Posterior', series: 15, status: 'RDL + Flexora (média 2.5x/sem)' },
+        { grupo: 'Peito', series: 15, status: 'Paralelas + Supino' },
+        { grupo: 'Costas', series: 15, status: 'Barra + Remada + Pullover' },
+        { grupo: 'Ombros (lateral)', series: 8, status: 'Elevação Lateral' },
+        { grupo: 'Tríceps', series: 13, status: 'Paralelas + Coice' },
+        { grupo: 'Bíceps/Braquial', series: 15, status: 'Barra Fixa + Rosca Martelo' },
+        { grupo: 'Antebraço', series: 8, status: 'Via Rosca Martelo' }
     ],
     regrasProgressao: [
-        'RIR 1 = quase falha. Deixar 1 rep no tanque',
-        'RIR 0 = falha técnica. Última série do exercício',
+        'Semana 1: A-B-A-B-A (foco em Perna+Empurrar)',
+        'Semana 2: B-A-B-A-B (foco em Posterior+Upper)',
+        'RIR 1-2 = quase falha. Deixar 1-2 reps no tanque',
         'Supersets: fazer A, imediatamente B, descansar',
-        'Chegou no topo das reps com RIR 1? Sobe peso',
-        'Farmer\'s walk: aumentar tempo ou peso quando ficar fácil'
+        'Chegou no topo das reps com RIR 2? Sobe peso'
     ]
 };
 
 // Exports antigos para compatibilidade
-export const upperA = segunda;
-export const lower = terca;
-export const upperB = quinta;
-export const upperC = sextaSab;
+export const upperA = treinoA;
+export const lower = treinoB;
+export const upperB = treinoA;
+export const upperC = treinoB;

@@ -55,6 +55,7 @@ interface WorkoutExercise {
     name: string;
     sets: WorkoutSet[];
     notes?: string;
+    supersetWith?: number; // localId do exercício com que está em superset
 }
 
 interface WorkoutContextData {
@@ -87,6 +88,7 @@ interface WorkoutContextData {
     replaceExercise: (exerciseId: string, newExerciseName: string) => Promise<void>;
     removeExercise: (exerciseId: string) => Promise<void>;
     removeSet: (exerciseId: string, setId: string) => Promise<void>;
+    toggleSuperset: (exerciseId: string) => void;
 }
 
 const WorkoutContext = createContext<WorkoutContextData>({} as WorkoutContextData);
@@ -211,6 +213,7 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
                     remoteId: ex.remote_id || undefined,
                     name: ex.exercise_name,
                     sets: workoutSets,
+                    supersetWith: ex.superset_with || undefined,
                 });
             }
 
@@ -335,6 +338,8 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
 
             // 4. Cria exercícios e sets LOCAL
             const initialExercises: WorkoutExercise[] = [];
+            // Mapa de templateId -> localId para resolver supersets depois
+            const templateIdToLocalId: Record<string, number> = {};
 
             for (let i = 0; i < exercisesData.length; i++) {
                 const exData = exercisesData[i];
@@ -344,6 +349,11 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
                     exercise_name: exData.name,
                     order_index: i,
                 });
+
+                // Guarda mapeamento templateId -> localId
+                if (exData.templateId) {
+                    templateIdToLocalId[exData.templateId] = localExerciseId;
+                }
 
                 const exercisePRs = prsData[exData.name] || [];
                 const targetReps = exData.targetReps?.toString() || '';
@@ -388,14 +398,55 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
                 }
 
                 initialExercises.push({
-                    id: exData.templateId || `ex-${localExerciseId}`,
+                    id: `ex-${localExerciseId}`,
                     localId: localExerciseId,
                     name: exData.name,
                     sets,
+                    // supersetWith será preenchido depois
                 });
             }
 
-            // 5. Atualiza estado
+            // 5. Detecta e salva supersets baseado no templateId (ex: "1a" + "1b" = superset)
+            for (let i = 0; i < exercisesData.length; i++) {
+                const currentTemplateId = exercisesData[i].templateId;
+                if (!currentTemplateId) continue;
+
+                // Verifica se é parte de superset (termina com letra: 1a, 1b, 2a, 2b, etc.)
+                const match = currentTemplateId.match(/^(\d+)([a-z])$/);
+                if (!match) continue;
+
+                const groupNumber = match[1];
+                const letter = match[2];
+
+                // Se termina com 'a', procura o 'b' correspondente
+                if (letter === 'a') {
+                    const partnerTemplateId = `${groupNumber}b`;
+                    const partnerLocalId = templateIdToLocalId[partnerTemplateId];
+
+                    if (partnerLocalId) {
+                        const currentLocalId = templateIdToLocalId[currentTemplateId];
+
+                        // Salva no banco
+                        await updateLocalExercise(currentLocalId, { superset_with: partnerLocalId });
+                        await updateLocalExercise(partnerLocalId, { superset_with: currentLocalId });
+
+                        // Atualiza no estado
+                        const currentExIdx = initialExercises.findIndex(ex => ex.localId === currentLocalId);
+                        const partnerExIdx = initialExercises.findIndex(ex => ex.localId === partnerLocalId);
+
+                        if (currentExIdx !== -1) {
+                            initialExercises[currentExIdx].supersetWith = partnerLocalId;
+                        }
+                        if (partnerExIdx !== -1) {
+                            initialExercises[partnerExIdx].supersetWith = currentLocalId;
+                        }
+
+                        console.log(`[WorkoutContext] Created superset: ${currentTemplateId} <-> ${partnerTemplateId}`);
+                    }
+                }
+            }
+
+            // 6. Atualiza estado
             setWorkoutId(localWorkoutId);
             setWorkoutName(workoutNameStr);
             setExercises(initialExercises);
@@ -823,6 +874,56 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
         }
     };
 
+    // ==================== TOGGLE SUPERSET ====================
+
+    const toggleSuperset = useCallback((exerciseId: string) => {
+        const exerciseIndex = exercises.findIndex(ex => ex.id === exerciseId);
+        if (exerciseIndex === -1) return;
+
+        const currentExercise = exercises[exerciseIndex];
+        const nextExercise = exercises[exerciseIndex + 1];
+
+        // Se não tem próximo exercício, não pode criar superset
+        if (!nextExercise) {
+            console.log('[WorkoutContext] No next exercise to create superset');
+            return;
+        }
+
+        // Se já tem superset com o próximo, remove o link
+        if (currentExercise.supersetWith === nextExercise.localId) {
+            console.log(`[WorkoutContext] Removing superset: ${currentExercise.name} <-> ${nextExercise.name}`);
+
+            // Remove link do exercício atual
+            updateLocalExercise(currentExercise.localId, { superset_with: null }).catch(console.error);
+            // Remove link do próximo exercício
+            updateLocalExercise(nextExercise.localId, { superset_with: null }).catch(console.error);
+
+            setExercises(prev => prev.map(ex => {
+                if (ex.id === exerciseId || ex.id === nextExercise.id) {
+                    return { ...ex, supersetWith: undefined };
+                }
+                return ex;
+            }));
+        } else {
+            // Cria novo superset
+            console.log(`[WorkoutContext] Creating superset: ${currentExercise.name} <-> ${nextExercise.name}`);
+
+            // Liga os dois exercícios
+            updateLocalExercise(currentExercise.localId, { superset_with: nextExercise.localId }).catch(console.error);
+            updateLocalExercise(nextExercise.localId, { superset_with: currentExercise.localId }).catch(console.error);
+
+            setExercises(prev => prev.map(ex => {
+                if (ex.id === exerciseId) {
+                    return { ...ex, supersetWith: nextExercise.localId };
+                }
+                if (ex.id === nextExercise.id) {
+                    return { ...ex, supersetWith: currentExercise.localId };
+                }
+                return ex;
+            }));
+        }
+    }, [exercises]);
+
     // ==================== CONTEXT VALUE ====================
 
     return (
@@ -857,6 +958,7 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
             replaceExercise,
             removeExercise,
             removeSet,
+            toggleSuperset,
         }}>
             {children}
         </WorkoutContext.Provider>
