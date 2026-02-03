@@ -18,6 +18,7 @@ import { useHapticPatterns } from '../hooks';
 import { KeyboardProvider, useKeyboard } from '../context/KeyboardContext';
 import { CustomKeyboard } from './CustomKeyboard';
 import { OptionsDropdown } from './OptionsDropdown';
+import { RestTimer } from './RestTimer';
 import * as Clipboard from 'expo-clipboard';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -62,10 +63,11 @@ const WorkoutScrollContent = memo(({
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[styles.scrollContent, { paddingBottom }]}
             onScroll={onScroll}
-            scrollEventThrottle={32} // Menos eventos de scroll (era 16)
+            scrollEventThrottle={64} // Reduz eventos de scroll para melhor performance
             bounces={true}
             overScrollMode="always"
             keyboardShouldPersistTaps="always"
+            removeClippedSubviews={true}
         >
             {children}
         </BottomSheetScrollView>
@@ -269,19 +271,37 @@ export const WorkoutBottomSheet = () => {
     const [showAddExercise, setShowAddExercise] = useState(false);
     const [showFinishModal, setShowFinishModal] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
+    const [showRestTimer, setShowRestTimer] = useState(false);
+    const [restTimerSeconds, setRestTimerSeconds] = useState(90);
     const haptics = useHapticPatterns();
 
     // ========== CALLBACKS MEMOIZADOS ==========
     const handleToggleSet = useCallback((exerciseId: string, setId: string) => {
+        // Encontra o exercício e set atual para verificar se está completando
+        const exercise = exercises.find(ex => ex.id === exerciseId);
+        const set = exercise?.sets.find((s: any) => s.id === setId);
+        const isCompleting = set && !set.completed;
+
         // Haptic agora é controlado pelo SetRow para sincronizar com a animação
         toggleSet(exerciseId, setId);
-    }, [toggleSet]);
+
+        // Se está completando (não descompleting), inicia timer de descanso
+        if (isCompleting) {
+            // Delay para a animação do check terminar
+            setTimeout(() => {
+                setRestTimerSeconds(90); // 90s padrão, pode vir do template depois
+                setShowRestTimer(true);
+            }, 500);
+        }
+    }, [toggleSet, exercises]);
 
     const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        'worklet';
         const scrollY = event.nativeEvent.contentOffset.y;
         const shouldBeScrolled = scrollY > 10;
         if (shouldBeScrolled !== isScrolled) {
-            setIsScrolled(shouldBeScrolled);
+            // Batch state update para evitar re-renders excessivos
+            requestAnimationFrame(() => setIsScrolled(shouldBeScrolled));
         }
     }, [isScrolled]);
 
@@ -536,6 +556,14 @@ export const WorkoutBottomSheet = () => {
                 </BottomSheet>
 
                 <CustomKeyboard />
+
+                {/* Rest Timer */}
+                <RestTimer
+                    visible={showRestTimer}
+                    initialSeconds={restTimerSeconds}
+                    onClose={() => setShowRestTimer(false)}
+                    onFinish={() => setShowRestTimer(false)}
+                />
             </View>
         </KeyboardProvider>
     );

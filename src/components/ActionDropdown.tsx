@@ -6,7 +6,7 @@
  * 2. Com botão padrão (DotsThree)
  */
 import React, { useState, useRef, useCallback, useEffect, ReactNode } from 'react';
-import { View, Text, Modal, StyleSheet, Pressable } from 'react-native';
+import { View, Text, Modal, StyleSheet, Pressable, Dimensions } from 'react-native';
 import Animated, {
     useAnimatedStyle,
     useSharedValue,
@@ -147,10 +147,12 @@ export const ActionDropdown = ({
     const opacity = useSharedValue(0);
     const scale = useSharedValue(0.9);
 
-    // Calcula posição baseado no anchor
+    // Calcula posição baseado no anchor, evitando overflow
     const calculatePosition = useCallback(
         (x: number, y: number, width: number, height: number) => {
+            const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
             const dropdownWidth = showLetters ? 200 : 180;
+            const estimatedDropdownHeight = options.length * 48 + 8; // ~48px por opção + padding
 
             let left: number;
             switch (anchor) {
@@ -166,14 +168,32 @@ export const ActionDropdown = ({
                     break;
             }
 
+            // Garante que não saia pela direita
+            left = Math.min(left, screenWidth - dropdownWidth - 10);
+            // Garante que não saia pela esquerda
+            left = Math.max(10, left);
+
+            // Calcula posição Y - se não couber embaixo, abre pra cima
+            let top = y + height + 4;
+            const wouldOverflowBottom = top + estimatedDropdownHeight > screenHeight - 20;
+
+            if (wouldOverflowBottom) {
+                // Abre pra cima do botão
+                top = y - estimatedDropdownHeight - 4;
+            }
+
+            // Garante que não saia pelo topo
+            top = Math.max(50, top);
+
             return {
-                x: Math.max(10, left),
-                y: y + height + 4,
+                x: left,
+                y: top,
                 width,
                 height,
+                opensUpward: wouldOverflowBottom,
             };
         },
-        [anchor, showLetters]
+        [anchor, showLetters, options.length]
     );
 
     const handlePress = useCallback(() => {
@@ -238,10 +258,15 @@ export const ActionDropdown = ({
         opacity: opacity.value * 0.5,
     }));
 
+    // Determina origem da animação baseado na posição
+    const getTransformOrigin = () => {
+        const vertical = (position as any).opensUpward ? 'bottom' : 'top';
+        return `${anchor} ${vertical}`;
+    };
+
     const dropdownStyle = useAnimatedStyle(() => ({
         opacity: opacity.value,
         transform: [{ scale: scale.value }],
-        transformOrigin: anchor === 'left' ? 'left top' : anchor === 'center' ? 'center top' : 'right top',
     }));
 
     return (
@@ -273,6 +298,8 @@ export const ActionDropdown = ({
                             backgroundColor: theme.surface,
                             top: position.y,
                             left: position.x,
+                            transformOrigin: getTransformOrigin(),
+                            maxHeight: Dimensions.get('window').height * 0.6,
                         },
                         dropdownStyle,
                     ]}
