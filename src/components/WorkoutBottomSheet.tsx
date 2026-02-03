@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useEffect, useState, memo } from 'react';
 import { View, Text, TouchableOpacity, Alert, StyleSheet, Dimensions, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import Animated, {
@@ -10,18 +10,219 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 import { useWorkout } from '../context/WorkoutContext';
 import { useSheetAnimation } from '../context/SheetAnimationContext';
-import { Timer, DotsThree, CalendarBlank, Clock } from 'phosphor-react-native';
+import { Timer, CalendarBlank, Clock, Play } from 'phosphor-react-native';
 import { ExerciseCard } from './ExerciseCard';
 import { AddExerciseModal } from './AddExerciseModal';
 import { FinishWorkoutModal } from './FinishWorkoutModal';
 import { useHapticPatterns } from '../hooks';
-import { KeyboardProvider } from '../context/KeyboardContext';
+import { KeyboardProvider, useKeyboard } from '../context/KeyboardContext';
 import { CustomKeyboard } from './CustomKeyboard';
+import { OptionsDropdown } from './OptionsDropdown';
+import * as Clipboard from 'expo-clipboard';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MINI_PLAYER_HEIGHT = 70;
 const TAB_BAR_HEIGHT = 60;
+const KEYBOARD_HEIGHT = 60 * 4 + 24 + 12;
 
+// ========== FUNÇÕES UTILITÁRIAS (fora do componente) ==========
+const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const formatDate = () => {
+    const now = new Date();
+    return now.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const formatStartTime = (startedAt: string | null) => {
+    if (!startedAt) return '';
+    const date = new Date(startedAt);
+    return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+};
+
+// ========== SCROLL CONTENT (componente separado) ==========
+const WorkoutScrollContent = memo(({
+    children,
+    onScroll,
+    isKeyboardVisible,
+    bottomInset
+}: {
+    children: React.ReactNode;
+    onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+    isKeyboardVisible: boolean;
+    bottomInset: number;
+}) => {
+    const paddingBottom = isKeyboardVisible ? KEYBOARD_HEIGHT + bottomInset + 20 : 60;
+
+    return (
+        <BottomSheetScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom }]}
+            onScroll={onScroll}
+            scrollEventThrottle={32} // Menos eventos de scroll (era 16)
+            bounces={true}
+            overScrollMode="always"
+            keyboardShouldPersistTaps="always"
+        >
+            {children}
+        </BottomSheetScrollView>
+    );
+});
+
+// ========== EXERCISE LIST (componente separado e memoizado) ==========
+const ExerciseList = memo(({
+    exercises,
+    isActive,
+    onAddSet,
+    onUpdateSet,
+    onToggleSet,
+    onChangeSetType,
+    onFillFromPR,
+    onReplaceExercise,
+    onRemoveSet
+}: {
+    exercises: any[];
+    isActive: boolean;
+    onAddSet: (exerciseId: string) => void;
+    onUpdateSet: (exerciseId: string, setId: string, field: 'kg' | 'reps' | 'rir', value: string) => void;
+    onToggleSet: (exerciseId: string, setId: string) => void;
+    onChangeSetType: (exerciseId: string, setId: string, type: any) => void;
+    onFillFromPR: (exerciseId: string, setId: string) => void;
+    onReplaceExercise: (exerciseId: string, newName: string) => void;
+    onRemoveSet: (exerciseId: string, setId: string) => void;
+}) => {
+    return (
+        <View style={styles.exercisesContainer}>
+            {exercises.map((ex, index) => {
+                // Detecta superset
+                const isSuperset = /[a-z]$/.test(ex.id);
+                let supersetPosition: 'first' | 'last' | 'middle' | undefined;
+
+                if (isSuperset) {
+                    const baseId = ex.id.slice(0, -1);
+                    const prevEx = exercises[index - 1];
+                    const nextEx = exercises[index + 1];
+                    const prevIsPartner = prevEx && prevEx.id.slice(0, -1) === baseId;
+                    const nextIsPartner = nextEx && nextEx.id.slice(0, -1) === baseId;
+
+                    if (!prevIsPartner && nextIsPartner) supersetPosition = 'first';
+                    else if (prevIsPartner && !nextIsPartner) supersetPosition = 'last';
+                    else if (prevIsPartner && nextIsPartner) supersetPosition = 'middle';
+                    else supersetPosition = 'first';
+                }
+
+                return (
+                    <ExerciseCard
+                        key={ex.id}
+                        exerciseId={ex.id}
+                        name={ex.name}
+                        sets={ex.sets}
+                        onAddSet={onAddSet}
+                        onUpdateSet={onUpdateSet}
+                        onToggleSet={onToggleSet}
+                        onChangeSetType={onChangeSetType}
+                        onFillFromPR={onFillFromPR}
+                        onReplaceExercise={onReplaceExercise}
+                        onRemoveSet={onRemoveSet}
+                        isSuperset={isSuperset}
+                        supersetPosition={supersetPosition}
+                    />
+                );
+            })}
+        </View>
+    );
+});
+
+// ========== WORKOUT CONTENT (usa KeyboardContext) ==========
+const WorkoutContent = memo(({
+    theme,
+    insets,
+    isScrolled,
+    duration,
+    workoutName,
+    startedAt,
+    exercises,
+    isActive,
+    handleScroll,
+    handleAddSet,
+    handleUpdateSet,
+    handleToggleSet,
+    handleChangeSetType,
+    handleFillFromPR,
+    handleReplaceExercise,
+    handleRemoveSet,
+    handleAddExercise,
+    handleCancel,
+    workoutMenuOptions,
+}: any) => {
+    const { isVisible: isKeyboardVisible } = useKeyboard();
+
+    const dateText = useMemo(() => formatDate(), []);
+    const startTimeText = useMemo(() => formatStartTime(startedAt), [startedAt]);
+    const durationText = useMemo(() => formatTime(duration), [duration]);
+
+    return (
+        <WorkoutScrollContent
+            onScroll={handleScroll}
+            isKeyboardVisible={isKeyboardVisible}
+            bottomInset={insets.bottom}
+        >
+            {/* Título + Menu */}
+            <View style={[styles.titleRow, styles.contentPadding]}>
+                <Text style={[styles.title, { color: theme.text }]}>{workoutName}</Text>
+                <View style={[styles.menuButton, { backgroundColor: theme.primary }]}>
+                    <OptionsDropdown options={workoutMenuOptions} iconSize={20} iconColor="#fff" />
+                </View>
+            </View>
+
+            {/* Meta info */}
+            <View style={[styles.metaRow, styles.contentPadding]}>
+                <CalendarBlank size={16} color={theme.textSecondary} />
+                <Text style={[styles.metaText, { color: theme.textSecondary }]}>{dateText}</Text>
+            </View>
+            <View style={[styles.metaRow, styles.contentPadding]}>
+                <Play size={16} color={theme.textSecondary} weight="fill" />
+                <Text style={[styles.metaText, { color: theme.textSecondary }]}>Início: {startTimeText}</Text>
+            </View>
+            <View style={[styles.metaRow, styles.contentPadding]}>
+                <Clock size={16} color={theme.textSecondary} />
+                <Text style={[styles.metaText, { color: theme.textSecondary }]}>Duração: {durationText}</Text>
+            </View>
+
+            {/* Exercícios */}
+            <ExerciseList
+                exercises={exercises}
+                isActive={isActive}
+                onAddSet={handleAddSet}
+                onUpdateSet={handleUpdateSet}
+                onToggleSet={handleToggleSet}
+                onChangeSetType={handleChangeSetType}
+                onFillFromPR={handleFillFromPR}
+                onReplaceExercise={handleReplaceExercise}
+                onRemoveSet={handleRemoveSet}
+            />
+
+            {/* Botões de ação */}
+            <View style={styles.contentPadding}>
+                <TouchableOpacity
+                    onPress={handleAddExercise}
+                    style={[styles.addExerciseButton, { backgroundColor: theme.primary + '20' }]}
+                >
+                    <Text style={[styles.addExerciseText, { color: theme.primary }]}>+ Adicionar Exercício</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={handleCancel} style={styles.cancelButton}>
+                    <Text style={styles.cancelText}>Cancelar Treino</Text>
+                </TouchableOpacity>
+            </View>
+        </WorkoutScrollContent>
+    );
+});
+
+// ========== MAIN COMPONENT ==========
 export const WorkoutBottomSheet = () => {
     const { theme } = useTheme();
     const insets = useSafeAreaInsets();
@@ -33,6 +234,7 @@ export const WorkoutBottomSheet = () => {
         isMinimized,
         workoutName,
         duration,
+        startedAt,
         exercises,
         minimizeWorkout,
         maximizeWorkout,
@@ -43,7 +245,9 @@ export const WorkoutBottomSheet = () => {
         updateSet,
         toggleSet,
         changeSetType,
-        fillFromPR
+        fillFromPR,
+        replaceExercise,
+        removeSet
     } = useWorkout();
 
     const [showAddExercise, setShowAddExercise] = useState(false);
@@ -51,20 +255,48 @@ export const WorkoutBottomSheet = () => {
     const [isScrolled, setIsScrolled] = useState(false);
     const haptics = useHapticPatterns();
 
-    // Wrapper para chamar haptic ao completar set
+    // ========== CALLBACKS MEMOIZADOS ==========
     const handleToggleSet = useCallback((exerciseId: string, setId: string) => {
-        // Encontra o set para ver se vai completar ou descompletar
-        const exercise = exercises.find(ex => ex.id === exerciseId);
-        const set = exercise?.sets.find(s => s.id === setId);
-
-        // Só toca haptic quando está COMPLETANDO (não descomplentando)
-        if (set && !set.completed) {
-            haptics.completeSet();
-        }
-
+        // Haptic agora é controlado pelo SetRow para sincronizar com a animação
         toggleSet(exerciseId, setId);
-    }, [exercises, toggleSet, haptics]);
+    }, [toggleSet]);
 
+    const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const scrollY = event.nativeEvent.contentOffset.y;
+        const shouldBeScrolled = scrollY > 10;
+        if (shouldBeScrolled !== isScrolled) {
+            setIsScrolled(shouldBeScrolled);
+        }
+    }, [isScrolled]);
+
+    const handleAddExercise = useCallback(() => {
+        setShowAddExercise(true);
+    }, []);
+
+    const handleCancel = useCallback(() => {
+        Alert.alert('Cancelar Treino', 'Tem certeza que deseja cancelar?', [
+            { text: 'Não', style: 'cancel' },
+            { text: 'Sim', style: 'destructive', onPress: cancelWorkout }
+        ]);
+    }, [cancelWorkout]);
+
+    const handleFinish = useCallback(() => {
+        setShowFinishModal(true);
+    }, []);
+
+    const handleConfirmFinish = useCallback(() => {
+        setShowFinishModal(false);
+        haptics.finishWorkout();
+        finishWorkout();
+    }, [haptics, finishWorkout]);
+
+    const handleDiscardWorkout = useCallback(() => {
+        setShowFinishModal(false);
+        haptics.finishWorkout();
+        cancelWorkout();
+    }, [haptics, cancelWorkout]);
+
+    // ========== VALORES MEMOIZADOS ==========
     const navbarHeight = TAB_BAR_HEIGHT + insets.bottom;
 
     const snapPoints = useMemo(() => [
@@ -75,6 +307,57 @@ export const WorkoutBottomSheet = () => {
     const expandedPosition = SCREEN_HEIGHT - snapPoints[1];
     const minimizedPosition = SCREEN_HEIGHT - snapPoints[0];
 
+    const hasData = useMemo(() =>
+        exercises.some(ex => ex.sets.some(s => s.kg || s.reps || s.completed)),
+        [exercises]
+    );
+
+    const hasIncomplete = useMemo(() =>
+        exercises.some(ex => ex.sets.some(s => (s.kg || s.reps) && !s.completed)),
+        [exercises]
+    );
+
+    // Exporta JSON
+    const exportWorkoutJson = useCallback(async () => {
+        const exportData = {
+            nome: workoutName,
+            data: new Date().toISOString().split('T')[0],
+            duracao: formatTime(duration),
+            exercicios: exercises.map(ex => ({
+                nome: ex.name,
+                series: ex.sets
+                    .filter(s => s.completed || s.kg || s.reps)
+                    .map((s, idx) => ({
+                        numero: idx + 1,
+                        tipo: s.type,
+                        peso: s.kg ? `${s.kg}kg` : null,
+                        reps: s.reps || null,
+                        rir: s.rir ?? null,
+                        completa: s.completed
+                    }))
+            })).filter(ex => ex.series.length > 0)
+        };
+
+        const jsonString = JSON.stringify(exportData, null, 2);
+        await Clipboard.setStringAsync(jsonString);
+
+        Alert.alert(
+            'Treino Copiado!',
+            'JSON do treino atual copiado para a área de transferência.',
+            [{ text: 'OK' }]
+        );
+    }, [workoutName, duration, exercises]);
+
+    const workoutMenuOptions = useMemo(() => [
+        {
+            id: 'export',
+            label: 'Exportar JSON',
+            icon: 'export' as const,
+            onPress: exportWorkoutJson,
+        },
+    ], [exportWorkoutJson]);
+
+    // ========== EFFECTS ==========
     useEffect(() => {
         if (isActive) {
             bottomSheetRef.current?.snapToIndex(1);
@@ -91,55 +374,7 @@ export const WorkoutBottomSheet = () => {
         }
     }, [minimizeWorkout, maximizeWorkout]);
 
-    const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-        const scrollY = event.nativeEvent.contentOffset.y;
-        setIsScrolled(scrollY > 10);
-    }, []);
-
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    };
-
-    const formatDate = () => {
-        const now = new Date();
-        return now.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
-    };
-
-    // Verifica se tem algum dado preenchido
-    const hasData = exercises.some(ex =>
-        ex.sets.some(s => s.kg || s.reps || s.completed)
-    );
-
-    // Verifica se tem séries não completas (mas com dados)
-    const hasIncomplete = exercises.some(ex =>
-        ex.sets.some(s => (s.kg || s.reps) && !s.completed)
-    );
-
-    const handleFinish = () => {
-        setShowFinishModal(true);
-    };
-
-    const handleConfirmFinish = () => {
-        setShowFinishModal(false);
-        haptics.finishWorkout(); // Fanfarra de celebração!
-        finishWorkout();
-    };
-
-    const handleDiscardWorkout = () => {
-        setShowFinishModal(false);
-        cancelWorkout();
-    };
-
-    const handleCancel = () => {
-        Alert.alert('Cancelar Treino', 'Tem certeza que deseja cancelar?', [
-            { text: 'Não', style: 'cancel' },
-            { text: 'Sim', style: 'destructive', onPress: cancelWorkout }
-        ]);
-    };
-
-    // Mini-player style
+    // ========== ANIMATED STYLES ==========
     const miniPlayerStyle = useAnimatedStyle(() => {
         const pos = animatedPosition.value;
         const opacity = interpolate(
@@ -154,7 +389,6 @@ export const WorkoutBottomSheet = () => {
         };
     });
 
-    // Expanded content style
     const expandedStyle = useAnimatedStyle(() => {
         const pos = animatedPosition.value;
         const opacity = interpolate(
@@ -165,17 +399,15 @@ export const WorkoutBottomSheet = () => {
         );
         return {
             opacity,
-            pointerEvents: opacity > 0.5 ? 'auto' : 'none',
         };
     });
 
-    // Handle customizado que inclui o header (arrastável)
+    // ========== RENDER HANDLE ==========
     const renderHandle = useCallback(() => (
         <View style={[styles.handleContainer, { backgroundColor: theme.surface }]}>
-            {/* Indicador de arrastar */}
             <View style={[styles.handleIndicator, { backgroundColor: theme.textSecondary }]} />
 
-            {/* Header com botões (expandido) */}
+            {/* Header expandido */}
             <Animated.View style={expandedStyle}>
                 <View style={[
                     styles.stickyHeader,
@@ -207,7 +439,7 @@ export const WorkoutBottomSheet = () => {
                 </View>
             </Animated.View>
 
-            {/* Mini player content (minimizado) */}
+            {/* Mini player */}
             <Animated.View style={[styles.miniPlayerInHandle, miniPlayerStyle]}>
                 <TouchableOpacity
                     onPress={() => bottomSheetRef.current?.snapToIndex(1)}
@@ -219,8 +451,9 @@ export const WorkoutBottomSheet = () => {
                 </TouchableOpacity>
             </Animated.View>
         </View>
-    ), [theme, isScrolled, duration, expandedStyle, miniPlayerStyle, workoutName]);
+    ), [theme, isScrolled, duration, expandedStyle, miniPlayerStyle, workoutName, handleFinish]);
 
+    // ========== RENDER ==========
     return (
         <KeyboardProvider>
             <View style={[StyleSheet.absoluteFill, { pointerEvents: 'box-none', zIndex: 999 }]}>
@@ -239,94 +472,28 @@ export const WorkoutBottomSheet = () => {
                     overDragResistanceFactor={10}
                     enableContentPanningGesture={false}
                 >
-                    {/* ===== CONTEÚDO EXPANDIDO ===== */}
                     <Animated.View style={[styles.expandedContainer, expandedStyle]}>
-                        <BottomSheetScrollView
-                            showsVerticalScrollIndicator={false}
-                            contentContainerStyle={styles.scrollContent}
-                            onScroll={handleScroll}
-                            scrollEventThrottle={16}
-                            bounces={true}
-                            overScrollMode="always"
-                        >
-                            {/* Título + Menu */}
-                            <View style={[styles.titleRow, styles.contentPadding]}>
-                                <Text style={[styles.title, { color: theme.text }]}>{workoutName}</Text>
-                                <TouchableOpacity style={[styles.menuButton, { backgroundColor: theme.primary }]}>
-                                    <DotsThree size={20} color="#fff" weight="bold" />
-                                </TouchableOpacity>
-                            </View>
-
-                            {/* Data e Hora */}
-                            <View style={[styles.metaRow, styles.contentPadding]}>
-                                <CalendarBlank size={16} color={theme.textSecondary} />
-                                <Text style={[styles.metaText, { color: theme.textSecondary }]}>{formatDate()}</Text>
-                            </View>
-                            <View style={[styles.metaRow, styles.contentPadding]}>
-                                <Clock size={16} color={theme.textSecondary} />
-                                <Text style={[styles.metaText, { color: theme.textSecondary }]}>{formatTime(duration)}</Text>
-                            </View>
-
-                            {/* Exercícios */}
-                            <View style={styles.exercisesContainer}>
-                                {exercises.map((ex, index) => {
-                                    // Detecta se é superset baseado no ID (4a/4b, 5a/5b, etc)
-                                    const isSuperset = /[a-z]$/.test(ex.id);
-                                    let supersetPosition: 'first' | 'last' | 'middle' | undefined;
-
-                                    if (isSuperset) {
-                                        const baseId = ex.id.slice(0, -1);
-                                        const prevEx = exercises[index - 1];
-                                        const nextEx = exercises[index + 1];
-
-                                        const prevIsPartner = prevEx && prevEx.id.slice(0, -1) === baseId;
-                                        const nextIsPartner = nextEx && nextEx.id.slice(0, -1) === baseId;
-
-                                        if (!prevIsPartner && nextIsPartner) {
-                                            supersetPosition = 'first';
-                                        } else if (prevIsPartner && !nextIsPartner) {
-                                            supersetPosition = 'last';
-                                        } else if (prevIsPartner && nextIsPartner) {
-                                            supersetPosition = 'middle';
-                                        } else {
-                                            supersetPosition = 'first';
-                                        }
-                                    }
-
-                                    return (
-                                        <ExerciseCard
-                                            key={ex.id}
-                                            exerciseId={ex.id}
-                                            name={ex.name}
-                                            sets={ex.sets}
-                                            onAddSet={addSet}
-                                            onUpdateSet={updateSet}
-                                            onToggleSet={handleToggleSet}
-                                            onChangeSetType={changeSetType}
-                                            onFillFromPR={fillFromPR}
-                                            isSuperset={isSuperset}
-                                            supersetPosition={supersetPosition}
-                                        />
-                                    );
-                                })}
-                            </View>
-
-                            {/* Botões de ação */}
-                            <View style={styles.contentPadding}>
-                                <TouchableOpacity
-                                    onPress={() => setShowAddExercise(true)}
-                                    style={[styles.addExerciseButton, { backgroundColor: theme.primary + '20' }]}
-                                >
-                                    <Text style={[styles.addExerciseText, { color: theme.primary }]}>+ Adicionar Exercício</Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity onPress={handleCancel} style={styles.cancelButton}>
-                                    <Text style={styles.cancelText}>Cancelar Treino</Text>
-                                </TouchableOpacity>
-                            </View>
-
-                            <View style={{ height: 60 }} />
-                        </BottomSheetScrollView>
+                        <WorkoutContent
+                            theme={theme}
+                            insets={insets}
+                            isScrolled={isScrolled}
+                            duration={duration}
+                            workoutName={workoutName}
+                            startedAt={startedAt}
+                            exercises={exercises}
+                            isActive={isActive}
+                            handleScroll={handleScroll}
+                            handleAddSet={addSet}
+                            handleUpdateSet={updateSet}
+                            handleToggleSet={handleToggleSet}
+                            handleChangeSetType={changeSetType}
+                            handleFillFromPR={fillFromPR}
+                            handleReplaceExercise={replaceExercise}
+                            handleRemoveSet={removeSet}
+                            handleAddExercise={handleAddExercise}
+                            handleCancel={handleCancel}
+                            workoutMenuOptions={workoutMenuOptions}
+                        />
                     </Animated.View>
 
                     <AddExerciseModal
@@ -346,7 +513,6 @@ export const WorkoutBottomSheet = () => {
                     />
                 </BottomSheet>
 
-                {/* TECLADO FORA DO BOTTOM SHEET - Rendering on top (Z-Index handled by absolute position in Comp) */}
                 <CustomKeyboard />
             </View>
         </KeyboardProvider>
@@ -354,7 +520,6 @@ export const WorkoutBottomSheet = () => {
 };
 
 const styles = StyleSheet.create({
-    // Shadow-md para o sheet ficar em cima da página
     sheetShadow: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: -2 },
@@ -362,8 +527,6 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
         elevation: 6,
     },
-
-    // Handle customizado (arrastável)
     handleContainer: {
         paddingTop: 12,
     },
@@ -374,8 +537,6 @@ const styles = StyleSheet.create({
         alignSelf: 'center',
         marginBottom: 8,
     },
-
-    // Mini-player dentro do handle
     miniPlayerInHandle: {
         position: 'absolute',
         top: 20,
@@ -400,13 +561,9 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         marginTop: 2,
     },
-
-    // Conteúdo expandido
     expandedContainer: {
         flex: 1,
     },
-
-    // Header fixo
     stickyHeader: {
         paddingHorizontal: 16,
         paddingTop: 8,
@@ -448,17 +605,12 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 16,
     },
-
-    // Scroll content - sem padding para o verde ir até as pontas
     scrollContent: {
         paddingHorizontal: 0,
     },
-    // Padding padrão do conteúdo
     contentPadding: {
         paddingHorizontal: 16,
     },
-
-    // Título
     titleRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -478,8 +630,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginLeft: 12,
     },
-
-    // Meta (data/hora)
     metaRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -489,13 +639,9 @@ const styles = StyleSheet.create({
         fontSize: 14,
         marginLeft: 8,
     },
-
-    // Exercícios
     exercisesContainer: {
         marginTop: 20,
     },
-
-    // Botões
     addExerciseButton: {
         paddingVertical: 14,
         borderRadius: 12,

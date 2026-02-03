@@ -1,22 +1,24 @@
-import React, { useRef, memo, useCallback, useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Keyboard } from 'react-native';
+import React, { memo, useCallback, useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
     withSequence,
     withTiming,
     withSpring,
+    withDelay,
     interpolate,
+    runOnJS,
     Easing,
 } from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
-const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 import { useTheme } from '../theme';
-import { Check, Barbell, Repeat, Target } from 'phosphor-react-native';
+import { Check, Barbell, Repeat, Target, Trash } from 'phosphor-react-native';
 import { SetType } from './SetTypeModal';
 import { SetTypeDropdown } from './SetTypeDropdown';
 import { KeyboardInput } from './KeyboardInput';
+import { CoreHaptics } from 'expo-core-haptics';
 
 interface SetRowProps {
     setId: string;
@@ -38,116 +40,137 @@ interface SetRowProps {
     onToggle: (setId: string) => void;
     onChangeType: (setId: string, type: SetType) => void;
     onFillFromPR?: (setId: string) => void;
+    onRemove?: (setId: string) => void;
 }
 
-// Caracteres Unicode para superscript (0-9)
-const SUPERSCRIPT_DIGITS: Record<string, string> = {
-    '0': '\u2070',
-    '1': '\u00B9',
-    '2': '\u00B2',
-    '3': '\u00B3',
-    '4': '\u2074',
-    '5': '\u2075',
-    '6': '\u2076',
-    '7': '\u2077',
-    '8': '\u2078',
-    '9': '\u2079',
-};
+const SWIPE_THRESHOLD = -80;
 
-// Converte número para superscript
-const toSuperscript = (num: number): string => {
-    return String(num).split('').map(d => SUPERSCRIPT_DIGITS[d] || d).join('');
-};
-
-const SetRowComponent = ({ setId, index, prev, prData, kg, reps, rir, completed, type, targetReps, targetRir, onUpdate, onToggle, onChangeType, onFillFromPR }: SetRowProps) => {
+const SetRowComponent = ({
+    setId,
+    index,
+    prev,
+    prData,
+    kg,
+    reps,
+    rir,
+    completed,
+    type,
+    targetReps,
+    targetRir,
+    onUpdate,
+    onToggle,
+    onChangeType,
+    onFillFromPR,
+    onRemove
+}: SetRowProps) => {
     const { theme } = useTheme();
 
-    // IDs unicos para registro no contexto (passed to KeyboardInput)
+    // ========== ANIMAÇÕES ESSENCIAIS ==========
+    // Swipe-to-delete
+    const translateX = useSharedValue(0);
+    const deleteOpacity = useSharedValue(0);
+
+    // Shake para erro
+    const shakeX = useSharedValue(0);
+
+    // Animação do checkbox (scale)
+    const checkScale = useSharedValue(completed ? 1 : 0);
+
+    // Animação de completar: verde preenchendo + flash
+    const fillProgress = useSharedValue(completed ? 1 : 0);
+    const flashOpacity = useSharedValue(0);
+
+
+    // ========== ESTADO DE ERRO ==========
+    const [kgError, setKgError] = useState(false);
+    const [repsError, setRepsError] = useState(false);
+
+    // IDs para o KeyboardInput
     const kgInputId = `${setId}-kg`;
     const repsInputId = `${setId}-reps`;
     const rirInputId = `${setId}-rir`;
 
-    // Estados de erro para validação
-    const [kgError, setKgError] = useState(false);
-    const [repsError, setRepsError] = useState(false);
-
-    // Animação de shake (erro)
-    const shakeX = useSharedValue(0);
-
-    // Animação de Haptic (sucesso)
-    // 0 -> 1: Progresso do verde descendo
-    const progress = useSharedValue(completed ? 1 : 0);
-    // Flash de impacto: 0 -> 1 -> 0
-    const impactFlash = useSharedValue(0);
-    // Scale: 1 -> 1.02 -> 1 (sobe com buildup, volta na porrada)
-    const rowScale = useSharedValue(1);
-
-    // Reage a mudanças em 'completed'
-    useEffect(() => {
-        if (completed) {
-            // SEQUÊNCIA DE SUCESSO SINCRONIZADA COM HAPTIC
-            // 0ms -- 500ms: Buildup (Verde descendo + Scale subindo)
-            // 550ms: Impacto (Flash + Scale volta)
-
-            // Verde desce de cima pra baixo
-            progress.value = withTiming(1, {
-                duration: 500,
-                easing: Easing.out(Easing.cubic)
-            });
-
-            // Scale sobe durante buildup
-            rowScale.value = withTiming(1.015, {
-                duration: 500,
-                easing: Easing.out(Easing.cubic)
-            });
-
-            // Na porrada (550ms): flash + scale volta com bounce
-            setTimeout(() => {
-                impactFlash.value = withSequence(
-                    withTiming(1, { duration: 50 }),
-                    withTiming(0, { duration: 300 })
-                );
-                rowScale.value = withSpring(1, {
-                    damping: 12,
-                    stiffness: 400,
-                });
-            }, 500);
-
-        } else {
-            // Reset rápido
-            progress.value = withTiming(0, { duration: 200 });
-            impactFlash.value = 0;
-            rowScale.value = withTiming(1, { duration: 150 });
+    // Handler para deletar a série
+    const handleRemove = useCallback(() => {
+        if (onRemove) {
+            if (CoreHaptics.isSupported()) {
+                CoreHaptics.tap.heavy();
+            }
+            onRemove(setId);
         }
-    }, [completed]);
+    }, [setId, onRemove]);
 
-    // Estilo com shake + scale
+    // Gesture pan para swipe-to-delete
+    const panGesture = Gesture.Pan()
+        .activeOffsetX([-10, 10])
+        .onUpdate((event) => {
+            if (event.translationX < 0) {
+                translateX.value = Math.max(event.translationX, -120);
+                deleteOpacity.value = interpolate(
+                    event.translationX,
+                    [0, SWIPE_THRESHOLD],
+                    [0, 1]
+                );
+            }
+        })
+        .onEnd((event) => {
+            if (event.translationX < SWIPE_THRESHOLD) {
+                translateX.value = withTiming(-400, { duration: 200 });
+                runOnJS(handleRemove)();
+            } else {
+                translateX.value = withSpring(0, { damping: 15, stiffness: 150 });
+                deleteOpacity.value = withTiming(0, { duration: 150 });
+            }
+        });
+
+    // Estilo da row (swipe + shake)
     const rowAnimatedStyle = useAnimatedStyle(() => ({
         transform: [
-            { translateX: shakeX.value },
-            { scale: rowScale.value },
+            { translateX: translateX.value + shakeX.value },
         ],
     }));
 
-    // Verde desce de cima pra baixo (cobre 100%)
-    const gradientFillStyle = useAnimatedStyle(() => {
-        // translateY: -100% (escondido acima) -> 0% (cobrindo tudo)
-        const translateY = interpolate(
-            progress.value,
-            [0, 1],
-            [-100, 0]
-        );
+    // Estilo do botão de delete
+    const deleteButtonStyle = useAnimatedStyle(() => ({
+        opacity: deleteOpacity.value,
+    }));
 
+    // Estilo do check icon (animação de scale)
+    const checkAnimatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: checkScale.value }],
+        opacity: checkScale.value,
+    }));
+
+    // Estilo do preenchimento verde (de cima pra baixo)
+    // Usa scaleY para animação suave (0 = invisível, 1 = completo)
+    const fillAnimatedStyle = useAnimatedStyle(() => {
+        'worklet';
         return {
-            transform: [{ translateY: `${translateY}%` }]
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: '#22c55e20',
+            transform: [
+                { scaleY: fillProgress.value },
+            ],
+            transformOrigin: 'top',
         };
     });
 
-    // Flash de impacto
-    const impactStyle = useAnimatedStyle(() => ({
-        opacity: impactFlash.value,
+    // Estilo do flash branco
+    const flashAnimatedStyle = useAnimatedStyle(() => ({
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: '#ffffff',
+        opacity: flashOpacity.value,
     }));
 
+    // Trigger shake animation
     const triggerShake = useCallback(() => {
         shakeX.value = withSequence(
             withTiming(-10, { duration: 50 }),
@@ -156,11 +179,10 @@ const SetRowComponent = ({ setId, index, prev, prData, kg, reps, rir, completed,
             withTiming(10, { duration: 50 }),
             withTiming(0, { duration: 50 })
         );
-    }, []);
+    }, [shakeX]);
 
-    // Handlers memoizados que incluem o setId
+    // ========== HANDLERS ==========
     const handleToggle = useCallback(() => {
-        // Validação: kg e reps são obrigatórios para completar
         if (!completed) {
             const missingKg = !kg || kg.trim() === '';
             const missingReps = !reps || reps.trim() === '';
@@ -170,7 +192,10 @@ const SetRowComponent = ({ setId, index, prev, prData, kg, reps, rir, completed,
                 setRepsError(missingReps);
                 triggerShake();
 
-                // Limpa erro após 2 segundos
+                if (CoreHaptics.isSupported()) {
+                    CoreHaptics.tap.custom(0.6, 0.3);
+                }
+
                 setTimeout(() => {
                     setKgError(false);
                     setRepsError(false);
@@ -178,161 +203,203 @@ const SetRowComponent = ({ setId, index, prev, prData, kg, reps, rir, completed,
 
                 return;
             }
+
+            // Duração total da animação de preenchimento
+            const fillDuration = 400; // Velocidade normal (um pouco mais lento que 280)
+            const flashDelay = fillDuration - 60;
+            const flashRiseDuration = 60;
+            const flashPeakTime = flashDelay + flashRiseDuration;
+
+            // 1. Preenche de verde de cima pra baixo - LINEAR
+            fillProgress.value = withTiming(1, {
+                duration: fillDuration,
+                easing: Easing.linear,
+            });
+
+            // 2. Flash branco no final do preenchimento
+            flashOpacity.value = withDelay(
+                flashDelay,
+                withSequence(
+                    withTiming(0.3, { duration: flashRiseDuration }),
+                    withTiming(0, { duration: 80 })
+                )
+            );
+
+            // 3. Check aparece quando flash está no pico
+            checkScale.value = withDelay(
+                flashPeakTime,
+                withTiming(1, { duration: 80, easing: Easing.out(Easing.back(1.5)) })
+            );
+
+            // 4. Haptic RAMP contínuo: grave → médio-agudo
+            if (CoreHaptics.isSupported()) {
+                CoreHaptics.ramp.custom(
+                    0.5,  // fromIntensity: começa médio
+                    0.6,  // toIntensity: termina médio-forte
+                    0.15, // fromSharpness: começa grave
+                    0.6,  // toSharpness: termina médio-agudo
+                    fillDuration / 1000
+                );
+
+                // HEAVY no pico do flash
+                setTimeout(() => {
+                    CoreHaptics.tap.heavy();
+                }, flashPeakTime);
+            }
+        } else {
+            // Descompletando - reverte tudo
+            fillProgress.value = withTiming(0, { duration: 150 });
+            checkScale.value = withTiming(0, { duration: 150 });
         }
 
         onToggle(setId);
-    }, [setId, onToggle, completed, kg, reps, triggerShake]);
+    }, [setId, onToggle, completed, kg, reps, triggerShake, checkScale]);
 
     const handleChangeType = useCallback((newType: SetType) => {
         onChangeType(setId, newType);
     }, [setId, onChangeType]);
 
-    // Handlers memoizados que incluem o setId
-
-
-    // Preenche campos com dados do PR
     const handleFillFromPR = useCallback(() => {
         if (onFillFromPR && !completed) {
             onFillFromPR(setId);
         }
     }, [setId, onFillFromPR, completed]);
 
-    // Formata PR: "20kg x 9 @ 2" (20kg, 9 reps, RIR 2)
-    const formatPR = () => {
+    // Formata PR: "20kg x 9 @ 2"
+    const formatPR = useCallback(() => {
         if (!prData) return prev || '-';
-
         const { weight, reps: prReps, rir: prRir } = prData;
         const rirStr = prRir !== null ? ` @ ${prRir}` : '';
-
         return `${weight}kg x ${prReps}${rirStr}`;
-    };
+    }, [prData, prev]);
 
-    // Background: só mostra cor do tipo se NÃO está completed
-    // Quando completed, o verde sólido cobre tudo
-    const rowBackgroundColor = theme.surface;
-
-    const checkboxBackgroundColor = completed ? '#22c55e' : theme.surface;
-    const checkColor = completed ? '#fff' : theme.textSecondary;
-
-    // Cor do texto "Anterior" - disabled quando completed
+    // ========== ESTILOS COMPUTADOS ==========
+    const checkboxBackgroundColor = completed ? '#22c55e' : theme.field;
+    const checkboxBorderColor = completed ? '#22c55e' : theme.textSecondary + '40';
     const anteriorTextColor = completed ? theme.textSecondary : theme.text;
     const anteriorOpacity = completed ? 0.5 : 1;
 
     // Placeholders baseados no PR
     const kgPlaceholder = prData ? String(prData.weight) : '-';
     const repsPlaceholder = prData ? String(prData.reps) : (targetReps || '-');
-    const rirPlaceholder = prData?.rir !== null && prData?.rir !== undefined ? String(prData.rir) : (targetRir || '-');
-
-    // Cores de erro ou Foco (agora handled no KeyboardInput)
-    // ...
+    const rirPlaceholder = prData?.rir !== null && prData?.rir !== undefined
+        ? String(prData.rir)
+        : (targetRir || '-');
 
     return (
-        <Animated.View style={[styles.row, { backgroundColor: rowBackgroundColor, overflow: 'hidden' }, rowAnimatedStyle]}>
-            {/* Background Layer: Verde sólido descendo de cima */}
-            <Animated.View
-                style={[
-                    StyleSheet.absoluteFill,
-                    {
-                        backgroundColor: '#22c55e20',
-                        zIndex: -2,
-                    },
-                    gradientFillStyle
-                ]}
-            />
+        <View style={styles.swipeContainer}>
+            {/* Background vermelho com ícone de lixeira */}
+            <Animated.View style={[styles.deleteBackground, deleteButtonStyle]}>
+                <Trash size={24} color="#fff" weight="bold" />
+            </Animated.View>
 
-            {/* Background Layer: Flash branco no impacto */}
-            <Animated.View
-                style={[
-                    StyleSheet.absoluteFill,
-                    {
-                        backgroundColor: '#ffffff40',
-                        zIndex: -1,
-                    },
-                    impactStyle
-                ]}
-            />
-
-            {/* Set Number / Type - Dropdown */}
-            <SetTypeDropdown
-                currentType={type}
-                index={index}
-                completed={completed}
-                onSelect={handleChangeType}
-            />
-
-            {/* PR - Clicável para preencher campos */}
-            <TouchableOpacity
-                className="flex-1 items-center justify-center"
-                onPress={handleFillFromPR}
-                disabled={completed}
-                activeOpacity={completed ? 1 : 0.6}
-            >
-                <Text
-                    style={{
-                        color: anteriorTextColor,
-                        opacity: anteriorOpacity,
-                    }}
-                    className="text-xs text-center"
+            <GestureDetector gesture={panGesture}>
+                <Animated.View
+                    style={[
+                        styles.row,
+                        { backgroundColor: theme.surface },
+                        rowAnimatedStyle
+                    ]}
                 >
-                    {formatPR()}
-                </Text>
-            </TouchableOpacity>
+                    {/* Preenchimento verde animado */}
+                    <Animated.View style={fillAnimatedStyle} pointerEvents="none" />
 
-            {/* KG */}
-            <View className="flex-1 items-center justify-center mx-1">
-                <KeyboardInput
-                    id={kgInputId}
-                    value={kg}
-                    placeholder={kgPlaceholder}
-                    onChange={(val) => onUpdate(setId, 'kg', val)}
-                    inputStep={2.5}
-                    hasError={kgError}
-                    icon={<Barbell size={12} color={kgError ? '#ef4444' : theme.textSecondary} weight="bold" />}
-                />
-            </View>
+                    {/* Flash branco */}
+                    <Animated.View style={flashAnimatedStyle} pointerEvents="none" />
+                    {/* Set Number / Type - Dropdown */}
+                    <SetTypeDropdown
+                        currentType={type}
+                        index={index}
+                        completed={completed}
+                        onSelect={handleChangeType}
+                    />
 
-            {/* Reps */}
-            <View className="flex-1 items-center justify-center mx-1">
-                <KeyboardInput
-                    id={repsInputId}
-                    value={reps}
-                    placeholder={repsPlaceholder}
-                    onChange={(val) => onUpdate(setId, 'reps', val)}
-                    inputStep={1}
-                    hasError={repsError}
-                    icon={<Repeat size={12} color={repsError ? '#ef4444' : theme.textSecondary} weight="bold" />}
-                    keyboardType="number-pad"
-                />
-            </View>
+                    {/* PR - Clicável para preencher campos */}
+                    <TouchableOpacity
+                        className="flex-1 items-center justify-center"
+                        onPress={handleFillFromPR}
+                        disabled={completed}
+                        activeOpacity={completed ? 1 : 0.6}
+                    >
+                        <Text
+                            style={{
+                                color: anteriorTextColor,
+                                opacity: anteriorOpacity,
+                            }}
+                            className="text-xs text-center"
+                        >
+                            {formatPR()}
+                        </Text>
+                    </TouchableOpacity>
 
-            {/* RIR */}
-            <View className="flex-1 items-center justify-center mx-1">
-                <KeyboardInput
-                    id={rirInputId}
-                    value={rir}
-                    placeholder={rirPlaceholder}
-                    onChange={(val) => onUpdate(setId, 'rir', val)}
-                    inputStep={1}
-                    icon={<Target size={12} color={theme.textSecondary} weight="bold" />}
-                    keyboardType="number-pad"
-                />
-            </View>
+                    {/* KG */}
+                    <View className="flex-1 items-center justify-center mx-1">
+                        <KeyboardInput
+                            id={kgInputId}
+                            value={kg}
+                            placeholder={kgPlaceholder}
+                            onChange={(val) => onUpdate(setId, 'kg', val)}
+                            inputStep={2.5}
+                            hasError={kgError}
+                            icon={<Barbell size={12} color={kgError ? '#ef4444' : theme.textSecondary} weight="bold" />}
+                            disabled={completed}
+                        />
+                    </View>
 
-            {/* Checkbox */}
-            <TouchableOpacity
-                onPress={handleToggle}
-                style={[styles.checkbox, { backgroundColor: checkboxBackgroundColor }]}
-                activeOpacity={0.8}
-            >
-                <Check size={16} color={checkColor} weight="bold" />
-            </TouchableOpacity>
-        </Animated.View>
+                    {/* Reps */}
+                    <View className="flex-1 items-center justify-center mx-1">
+                        <KeyboardInput
+                            id={repsInputId}
+                            value={reps}
+                            placeholder={repsPlaceholder}
+                            onChange={(val) => onUpdate(setId, 'reps', val)}
+                            inputStep={1}
+                            hasError={repsError}
+                            icon={<Repeat size={12} color={repsError ? '#ef4444' : theme.textSecondary} weight="bold" />}
+                            keyboardType="number-pad"
+                            disabled={completed}
+                        />
+                    </View>
+
+                    {/* RIR */}
+                    <View className="flex-1 items-center justify-center mx-1">
+                        <KeyboardInput
+                            id={rirInputId}
+                            value={rir}
+                            placeholder={rirPlaceholder}
+                            onChange={(val) => onUpdate(setId, 'rir', val)}
+                            inputStep={1}
+                            icon={<Target size={12} color={theme.textSecondary} weight="bold" />}
+                            keyboardType="number-pad"
+                            disabled={completed}
+                        />
+                    </View>
+
+                    {/* Checkbox com animação leve */}
+                    <TouchableOpacity
+                        onPress={handleToggle}
+                        style={[
+                            styles.checkbox,
+                            {
+                                backgroundColor: checkboxBackgroundColor,
+                                borderWidth: completed ? 0 : 2,
+                                borderColor: checkboxBorderColor,
+                            }
+                        ]}
+                        activeOpacity={0.8}
+                    >
+                        <Animated.View style={checkAnimatedStyle}>
+                            <Check size={16} color="#fff" weight="bold" />
+                        </Animated.View>
+                    </TouchableOpacity>
+                </Animated.View>
+            </GestureDetector>
+        </View>
     );
 };
 
-// Memoiza o componente para evitar re-renders desnecessários
+// Memoização com comparação otimizada
 export const SetRow = memo(SetRowComponent, (prevProps, nextProps) => {
-    // Só re-renderiza se props relevantes mudarem
     return (
         prevProps.kg === nextProps.kg &&
         prevProps.reps === nextProps.reps &&
@@ -342,16 +409,33 @@ export const SetRow = memo(SetRowComponent, (prevProps, nextProps) => {
         prevProps.index === nextProps.index &&
         prevProps.prev === nextProps.prev &&
         prevProps.targetReps === nextProps.targetReps &&
-        prevProps.targetRir === nextProps.targetRir
+        prevProps.targetRir === nextProps.targetRir &&
+        prevProps.prData === nextProps.prData
     );
 });
 
 const styles = StyleSheet.create({
+    swipeContainer: {
+        position: 'relative',
+        overflow: 'hidden',
+    },
+    deleteBackground: {
+        position: 'absolute',
+        right: 0,
+        top: 0,
+        bottom: 0,
+        width: 80,
+        backgroundColor: '#ef4444',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     row: {
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 8,
+        overflow: 'hidden', // Contém o preenchimento verde
+        minHeight: 48,
     },
     checkbox: {
         width: 32,

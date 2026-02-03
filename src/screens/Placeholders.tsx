@@ -2,16 +2,13 @@ import { View, Text, ScrollView, TouchableOpacity, Animated, Alert, TextInput, S
 import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { useTheme } from '../theme';
 import * as Progress from 'react-native-progress';
-import { currentUser, treinos } from '../data';
-import { TrendUp, Fire, Barbell, Timer, Trophy, Export, Trash, MagnifyingGlass, FunnelSimple, SignOut, UserMinus } from 'phosphor-react-native';
+import { currentUser } from '../data';
+import { TrendUp, Fire, Barbell, Timer, Trophy, MagnifyingGlass, FunnelSimple, SignOut, UserMinus, ArrowsClockwise } from 'phosphor-react-native';
 import { useAuth } from '../context/AuthContext';
-import { format, parseISO } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { usePressAnimation, useScreenAnimation } from '../hooks';
-import { getAllWorkouts, getExercisesByWorkout, getFullWorkout, deleteWorkout, WorkoutRecord, getUserStats, UserStats, getExerciseDBPriority, getExerciseDBTargets, getExerciseImageUrl, ExerciseDBPriority } from '../api';
+import { useScreenAnimation } from '../hooks';
+import { getUserStats, UserStats, getExerciseDBPriority, getExerciseDBTargets, getExerciseImageUrl, ExerciseDBPriority } from '../api';
 import { useFocusEffect } from '@react-navigation/native';
-import * as Clipboard from 'expo-clipboard';
-import { WorkoutDetailModal } from '../components/WorkoutDetailModal';
+import { triggerSync } from '../db/syncService';
 
 const PlaceholderScreen = ({ name }: { name: string }) => {
     const { theme } = useTheme();
@@ -20,262 +17,6 @@ const PlaceholderScreen = ({ name }: { name: string }) => {
         <View style={{ backgroundColor: theme.background }} className="flex-1 items-center justify-center">
             <Text style={{ color: theme.text }} className="text-xl">{name}</Text>
         </View>
-    );
-};
-
-interface WorkoutWithExercises extends WorkoutRecord {
-    exerciseNames: string[];
-    exerciseCount: number;
-}
-
-// Componente separado para evitar erro de hooks no map
-const WorkoutCard = ({
-    workout,
-    style,
-    onPress,
-    onExport,
-    onDelete
-}: {
-    workout: WorkoutWithExercises;
-    style: any;
-    onPress: (id: number) => void;
-    onExport: (id: number) => void;
-    onDelete: (id: number) => void;
-}) => {
-    const { theme } = useTheme();
-    const { onPressIn, onPressOut, animatedStyle: pressStyle } = usePressAnimation();
-
-    const formatDuration = (seconds: number | null) => {
-        if (!seconds) return '';
-        const mins = Math.floor(seconds / 60);
-        return `${mins} min`;
-    };
-
-    return (
-        <Animated.View style={[style, pressStyle]}>
-            <TouchableOpacity
-                onPress={() => onPress(workout.id)}
-                onPressIn={onPressIn}
-                onPressOut={onPressOut}
-                activeOpacity={1}
-                style={{ backgroundColor: theme.surface }}
-                className="p-4 rounded-xl mb-3"
-            >
-                <View className="flex-row justify-between items-start mb-2">
-                    <View className="flex-1">
-                        <Text style={{ color: theme.text }} className="font-bold text-base">
-                            {workout.name}
-                        </Text>
-                        <Text style={{ color: theme.textSecondary }} className="text-sm">
-                            {format(parseISO(workout.date), "EEEE, d 'de' MMMM", { locale: ptBR })}
-                        </Text>
-                    </View>
-                    <View className="items-end">
-                        <View style={{ backgroundColor: theme.primary + '20' }} className="px-2 py-1 rounded">
-                            <Text style={{ color: theme.primary }} className="text-xs font-bold">
-                                {workout.exerciseCount} exercícios
-                            </Text>
-                        </View>
-                        {workout.duration_seconds && (
-                            <Text style={{ color: theme.textSecondary }} className="text-xs mt-1">
-                                {formatDuration(workout.duration_seconds)}
-                            </Text>
-                        )}
-                    </View>
-                </View>
-
-                <Text style={{ color: theme.textSecondary }} className="text-sm mb-3" numberOfLines={1}>
-                    {workout.exerciseNames.slice(0, 3).join(', ')}{workout.exerciseNames.length > 3 ? '...' : ''}
-                </Text>
-
-                {/* Botões de ação */}
-                <View className="flex-row gap-2">
-                    <TouchableOpacity
-                        onPress={() => onExport(workout.id)}
-                        style={{ backgroundColor: theme.primary + '20' }}
-                        className="flex-1 flex-row items-center justify-center py-2 rounded-lg"
-                    >
-                        <Export size={16} color={theme.primary} weight="bold" />
-                        <Text style={{ color: theme.primary }} className="ml-2 font-bold text-sm">
-                            Exportar JSON
-                        </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        onPress={() => onDelete(workout.id)}
-                        style={{ backgroundColor: '#ef444420' }}
-                        className="px-4 py-2 rounded-lg"
-                    >
-                        <Trash size={16} color="#ef4444" weight="bold" />
-                    </TouchableOpacity>
-                </View>
-            </TouchableOpacity>
-        </Animated.View>
-    );
-};
-
-export const HistoryScreen = () => {
-    const { theme } = useTheme();
-    const [workouts, setWorkouts] = useState<WorkoutWithExercises[]>([]);
-    const [loading, setLoading] = useState(true);
-    const scrollViewRef = useRef<ScrollView>(null);
-    const [selectedWorkoutId, setSelectedWorkoutId] = useState<number | null>(null);
-
-    const loadWorkouts = useCallback(async () => {
-        try {
-            const allWorkouts = await getAllWorkouts();
-
-            // Busca exercícios para cada treino
-            const workoutsWithExercises = await Promise.all(
-                allWorkouts.slice(0, 50).map(async (workout) => {
-                    const exercises = await getExercisesByWorkout(workout.id);
-                    return {
-                        ...workout,
-                        exerciseNames: exercises.map(e => e.exercise_name),
-                        exerciseCount: exercises.length,
-                    };
-                })
-            );
-
-            setWorkouts(workoutsWithExercises);
-        } catch (error) {
-            console.error('[HistoryScreen] Error loading workouts:', error);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    // Recarrega quando a tela ganha foco e volta ao topo
-    useFocusEffect(
-        useCallback(() => {
-            loadWorkouts();
-            scrollViewRef.current?.scrollTo({ y: 0, animated: false });
-        }, [loadWorkouts])
-    );
-
-    // Exporta treino como JSON para clipboard
-    const handleExport = useCallback(async (workoutId: number) => {
-        try {
-            const fullWorkout = await getFullWorkout(workoutId);
-            if (!fullWorkout) {
-                Alert.alert('Erro', 'Treino não encontrado');
-                return;
-            }
-
-            // Formata para JSON legível no formato do treinos.json
-            const exportData = {
-                data: fullWorkout.workout.date,
-                treino: fullWorkout.workout.name,
-                horario_inicio: fullWorkout.workout.started_at?.split('T')[1]?.slice(0, 5),
-                duracao_segundos: fullWorkout.workout.duration_seconds,
-                observacoes: fullWorkout.workout.notes,
-                exercicios: fullWorkout.exercises.map(ex => ({
-                    nome: ex.exercise_name,
-                    observacao: ex.notes,
-                    series: ex.sets.map(set => ({
-                        peso_kg: set.weight,
-                        tipo_peso: set.weight_type,
-                        reps: set.reps,
-                        RIR: set.rir,
-                        tipo: set.set_type,
-                        tempo_seg: set.time_seconds,
-                        completado: set.completed,
-                        observacao: set.notes,
-                    })).filter(s => s.completado || s.peso_kg || s.reps) // Remove séries vazias
-                }))
-            };
-
-            const jsonString = JSON.stringify(exportData, null, 2);
-            await Clipboard.setStringAsync(jsonString);
-
-            Alert.alert(
-                'Exportado!',
-                `Treino "${fullWorkout.workout.name}" copiado para a área de transferência.\n\nCole em um arquivo .json no seu PC.`,
-                [{ text: 'OK' }]
-            );
-
-            console.log('[Export] Workout JSON:', jsonString);
-        } catch (error) {
-            console.error('[Export] Error:', error);
-            Alert.alert('Erro', 'Não foi possível exportar o treino');
-        }
-    }, []);
-
-    // Deleta treino
-    const handleDelete = useCallback(async (workoutId: number) => {
-        const workout = workouts.find(w => w.id === workoutId);
-
-        Alert.alert(
-            'Deletar treino?',
-            `Tem certeza que deseja deletar "${workout?.name}" de ${workout?.date}?\n\nEssa ação não pode ser desfeita.`,
-            [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                    text: 'Deletar',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            await deleteWorkout(workoutId);
-                            setWorkouts(prev => prev.filter(w => w.id !== workoutId));
-                            Alert.alert('Deletado', 'Treino removido com sucesso');
-                        } catch (error) {
-                            console.error('[Delete] Error:', error);
-                            Alert.alert('Erro', 'Não foi possível deletar o treino');
-                        }
-                    }
-                }
-            ]
-        );
-    }, [workouts]);
-
-    const handleOpenDetail = useCallback((workoutId: number) => {
-        setSelectedWorkoutId(workoutId);
-    }, []);
-
-    return (
-        <>
-            <ScrollView
-                ref={scrollViewRef}
-                style={{ backgroundColor: theme.background }}
-                className="flex-1 px-5 pt-16"
-                showsVerticalScrollIndicator={false}
-            >
-                <View>
-                    <Text style={{ color: theme.text }} className="text-2xl font-bold mb-6">Histórico</Text>
-                </View>
-
-                <View>
-                    <Text style={{ color: theme.text }} className="font-bold text-lg mb-3">
-                        {loading ? 'Carregando...' : `${workouts.length} treinos`}
-                    </Text>
-                </View>
-
-                {workouts.map((workout) => (
-                    <WorkoutCard
-                        key={workout.id}
-                        workout={workout}
-                        style={{}}
-                        onPress={handleOpenDetail}
-                        onExport={handleExport}
-                        onDelete={handleDelete}
-                    />
-                ))}
-
-                {!loading && workouts.length === 0 && (
-                    <View className="items-center py-8">
-                        <Text style={{ color: theme.textSecondary }}>Nenhum treino registrado ainda</Text>
-                    </View>
-                )}
-
-                <View className="h-32" />
-            </ScrollView>
-
-            <WorkoutDetailModal
-                visible={selectedWorkoutId !== null}
-                workoutId={selectedWorkoutId}
-                onClose={() => setSelectedWorkoutId(null)}
-                onWorkoutUpdated={loadWorkouts}
-            />
-        </>
     );
 };
 
@@ -571,8 +312,504 @@ export const ExercisesScreen = () => {
 
 export const StoreScreen = () => <PlaceholderScreen name="Store" />;
 
-// Dados padrão enquanto carrega
-const defaultStats: UserStats = {
+// ==================== ANIMATED COMPONENTS ====================
+
+import ReAnimated, {
+    useSharedValue,
+    useAnimatedStyle,
+    withTiming,
+    withSpring,
+    withDelay,
+    withSequence,
+    withRepeat,
+    interpolate,
+    Easing,
+    runOnJS,
+} from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
+import { CoreHaptics } from 'expo-core-haptics';
+import { useDev } from '../context/DevContext';
+
+// Número animado que conta de 0 até o valor final com haptics SINCRONIZADOS
+const AnimatedNumber = ({
+    value,
+    duration = 1200,
+    delay = 0,
+    suffix = '',
+    prefix = '',
+    style,
+    decimals = 0,
+    enableHaptics = false,
+    hapticSteps = 8, // Quantidade de taps durante a animação
+    animationKey = 0, // Key para forçar re-animação
+}: {
+    value: number;
+    duration?: number;
+    delay?: number;
+    suffix?: string;
+    prefix?: string;
+    style?: any;
+    decimals?: number;
+    enableHaptics?: boolean;
+    hapticSteps?: number;
+    animationKey?: number;
+}) => {
+    const [displayValue, setDisplayValue] = useState(0);
+    const animatedValue = useSharedValue(0);
+    const lastHapticStep = useRef(-1);
+
+    useEffect(() => {
+        // Reset display value imediatamente
+        setDisplayValue(0);
+        animatedValue.value = 0;
+        lastHapticStep.current = -1;
+
+        animatedValue.value = withDelay(
+            delay,
+            withTiming(value, {
+                duration,
+                easing: Easing.out(Easing.cubic),
+            })
+        );
+
+        // Update display value e trigger haptics SINCRONIZADOS
+        const interval = setInterval(() => {
+            const current = animatedValue.value;
+            setDisplayValue(current);
+
+            // Haptics progressivos sincronizados com o valor
+            if (enableHaptics && value > 0 && CoreHaptics.isSupported()) {
+                const progress = current / value; // 0 a 1
+                const currentStep = Math.floor(progress * hapticSteps);
+
+                if (currentStep > lastHapticStep.current && currentStep <= hapticSteps) {
+                    lastHapticStep.current = currentStep;
+
+                    // Sharpness progressivo: grave (0.1) → agudo (0.8)
+                    const sharpness = 0.1 + (progress * 0.7);
+                    // Intensidade levemente decrescente: 0.8 → 0.6
+                    const intensity = 0.8 - (progress * 0.2);
+
+                    CoreHaptics.tap.custom(intensity, sharpness);
+                }
+            }
+        }, 16);
+
+        const timeout = setTimeout(() => {
+            clearInterval(interval);
+            setDisplayValue(value);
+
+            // Tap final de sucesso
+            if (enableHaptics && value > 0 && CoreHaptics.isSupported()) {
+                CoreHaptics.patterns.success();
+            }
+        }, duration + delay + 100);
+
+        return () => {
+            clearInterval(interval);
+            clearTimeout(timeout);
+        };
+    }, [value, duration, delay, enableHaptics, hapticSteps, animationKey]);
+
+    const formattedValue = decimals > 0
+        ? displayValue.toFixed(decimals)
+        : Math.round(displayValue).toLocaleString();
+
+    return (
+        <Text style={style}>
+            {prefix}{formattedValue}{suffix}
+        </Text>
+    );
+};
+
+// Progress circle animado com haptics SINCRONIZADOS
+const AnimatedProgressCircle = ({
+    progress,
+    size = 70,
+    thickness = 6,
+    color,
+    unfilledColor,
+    delay = 0,
+    duration = 1000,
+    theme,
+    enableHaptics = true,
+    hapticSteps = 6,
+    animationKey = 0, // Key para forçar re-animação
+}: {
+    progress: number;
+    size?: number;
+    thickness?: number;
+    color: string;
+    unfilledColor: string;
+    delay?: number;
+    duration?: number;
+    theme: any;
+    enableHaptics?: boolean;
+    hapticSteps?: number;
+    animationKey?: number;
+}) => {
+    const [currentProgress, setCurrentProgress] = useState(0);
+    const animatedProgress = useSharedValue(0);
+    const lastHapticStep = useRef(-1);
+
+    useEffect(() => {
+        // Reset imediato
+        setCurrentProgress(0);
+        animatedProgress.value = 0;
+        lastHapticStep.current = -1;
+
+        animatedProgress.value = withDelay(
+            delay,
+            withTiming(progress, {
+                duration,
+                easing: Easing.out(Easing.cubic),
+            })
+        );
+
+        // Update display value e trigger haptics SINCRONIZADOS
+        const interval = setInterval(() => {
+            const current = animatedProgress.value;
+            setCurrentProgress(current);
+
+            // Haptics progressivos sincronizados com o círculo
+            if (enableHaptics && progress > 0 && CoreHaptics.isSupported()) {
+                const normalizedProgress = current / progress; // 0 a 1 relativo ao progresso final
+                const currentStep = Math.floor(normalizedProgress * hapticSteps);
+
+                if (currentStep > lastHapticStep.current && currentStep <= hapticSteps) {
+                    lastHapticStep.current = currentStep;
+
+                    // Sharpness progressivo: grave (0.1) → agudo (0.7)
+                    const sharpness = 0.1 + (normalizedProgress * 0.6);
+                    // Intensidade baseada no progresso final (meta alta = mais intenso)
+                    const baseIntensity = 0.5 + (progress * 0.3);
+                    const intensity = baseIntensity - (normalizedProgress * 0.15);
+
+                    CoreHaptics.tap.custom(intensity, sharpness);
+                }
+            }
+        }, 16);
+
+        const timeout = setTimeout(() => {
+            clearInterval(interval);
+            setCurrentProgress(progress);
+
+            // Haptic final baseado se atingiu a meta
+            if (enableHaptics && progress > 0 && CoreHaptics.isSupported()) {
+                if (progress >= 1) {
+                    // Meta atingida! Celebração
+                    CoreHaptics.patterns.goalComplete();
+                } else {
+                    // Terminou mas não completou
+                    CoreHaptics.patterns.success();
+                }
+            }
+        }, duration + delay + 100);
+
+        return () => {
+            clearInterval(interval);
+            clearTimeout(timeout);
+        };
+    }, [progress, duration, delay, enableHaptics, hapticSteps, animationKey]);
+
+    return (
+        <Progress.Circle
+            size={size}
+            progress={currentProgress}
+            thickness={thickness}
+            color={color}
+            unfilledColor={unfilledColor}
+            borderWidth={0}
+            showsText
+            formatText={() => `${Math.round(currentProgress * 100)}%`}
+            textStyle={{ color: theme.text, fontSize: 14, fontWeight: 'bold' }}
+        />
+    );
+};
+
+// Card de streak com efeito glow quando ativo
+const StreakCard = ({
+    streak,
+    theme,
+    animationDelay = 0,
+    animationKey = 0,
+}: {
+    streak: UserStats['streak'];
+    theme: any;
+    animationDelay?: number;
+    animationKey?: number;
+}) => {
+    const glowOpacity = useSharedValue(0);
+    const fireScale = useSharedValue(0.8);
+    const fireRotation = useSharedValue(0);
+
+    const hasStreak = streak.current > 0;
+
+    useEffect(() => {
+        // Reset
+        glowOpacity.value = 0;
+        fireScale.value = 0.8;
+        fireRotation.value = 0;
+
+        if (hasStreak) {
+            // Glow pulsante
+            glowOpacity.value = withDelay(
+                animationDelay,
+                withRepeat(
+                    withSequence(
+                        withTiming(0.6, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+                        withTiming(0.3, { duration: 1500, easing: Easing.inOut(Easing.ease) })
+                    ),
+                    -1,
+                    true
+                )
+            );
+
+            // Fire bounce in
+            fireScale.value = withDelay(
+                animationDelay,
+                withSpring(1, { damping: 8, stiffness: 100 })
+            );
+
+            // Subtle rotation
+            fireRotation.value = withDelay(
+                animationDelay,
+                withRepeat(
+                    withSequence(
+                        withTiming(-5, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
+                        withTiming(5, { duration: 2000, easing: Easing.inOut(Easing.ease) })
+                    ),
+                    -1,
+                    true
+                )
+            );
+
+            // Haptic: streak fire pattern (celebração de fogo)
+            if (CoreHaptics.isSupported()) {
+                setTimeout(() => {
+                    CoreHaptics.patterns.streakFire();
+                }, animationDelay);
+            }
+        }
+    }, [hasStreak, animationDelay, animationKey]);
+
+    const glowStyle = useAnimatedStyle(() => ({
+        opacity: glowOpacity.value,
+    }));
+
+    const fireStyle = useAnimatedStyle(() => ({
+        transform: [
+            { scale: fireScale.value },
+            { rotate: `${fireRotation.value}deg` },
+        ],
+    }));
+
+    // Estado vazio
+    if (!hasStreak) {
+        return (
+            <View style={{ backgroundColor: theme.surface }} className="flex-1 ml-2 p-4 rounded-xl items-center">
+                <View className="items-center justify-center h-[70px]">
+                    <Fire size={32} color={theme.textSecondary + '40'} weight="regular" />
+                    <View className="flex-row mt-2">
+                        <View style={{ backgroundColor: theme.textSecondary + '30' }} className="w-2 h-2 rounded-full mx-0.5" />
+                        <View style={{ backgroundColor: theme.textSecondary + '30' }} className="w-2 h-2 rounded-full mx-0.5" />
+                        <View style={{ backgroundColor: theme.textSecondary + '30' }} className="w-2 h-2 rounded-full mx-0.5" />
+                    </View>
+                </View>
+                <Text style={{ color: theme.textSecondary }} className="text-xs mt-2">Streak</Text>
+                <Text style={{ color: theme.textSecondary }} className="font-medium text-sm">
+                    Comece a treinar!
+                </Text>
+            </View>
+        );
+    }
+
+    const fireColor = streak.atRisk ? '#fbbf24' : '#f97316';
+    const glowColor = streak.atRisk ? 'rgba(251, 191, 36, 0.4)' : 'rgba(249, 115, 22, 0.4)';
+
+    return (
+        <View style={{ backgroundColor: theme.surface }} className="flex-1 ml-2 rounded-xl overflow-hidden">
+            {/* Glow effect background */}
+            <ReAnimated.View
+                style={[
+                    {
+                        position: 'absolute',
+                        top: -20,
+                        left: -20,
+                        right: -20,
+                        bottom: -20,
+                        backgroundColor: glowColor,
+                        borderRadius: 40,
+                    },
+                    glowStyle,
+                ]}
+            />
+
+            <View className="p-4 items-center">
+                <View className="items-center justify-center h-[70px]">
+                    <ReAnimated.View style={fireStyle}>
+                        <Fire size={32} color={fireColor} weight="fill" />
+                    </ReAnimated.View>
+                    <AnimatedNumber
+                        value={streak.current}
+                        duration={800}
+                        delay={animationDelay + 200}
+                        style={{ color: theme.text, fontSize: 24, fontWeight: 'bold', marginTop: 4 }}
+                        enableHaptics={true}
+                        hapticSteps={5}
+                        animationKey={animationKey}
+                    />
+                </View>
+                <Text style={{ color: theme.textSecondary }} className="text-xs mt-2">
+                    {streak.atRisk ? 'Streak em risco!' : 'Streak'}
+                </Text>
+                <Text style={{ color: theme.text }} className="font-bold">
+                    {streak.trainedToday ? 'treinou hoje' : 'dias seguidos'}
+                </Text>
+                {streak.best > streak.current && (
+                    <Text style={{ color: theme.textSecondary }} className="text-xs mt-1">
+                        Recorde: {streak.best}
+                    </Text>
+                )}
+            </View>
+        </View>
+    );
+};
+
+// Card de meta semanal com estado vazio
+const WeeklyGoalCard = ({
+    metaSemanal,
+    theme,
+    animationDelay = 0,
+    animationKey = 0,
+}: {
+    metaSemanal: UserStats['metaSemanal'];
+    theme: any;
+    animationDelay?: number;
+    animationKey?: number;
+}) => {
+    const progress = metaSemanal.meta > 0 ? metaSemanal.atual / metaSemanal.meta : 0;
+    const isEmpty = metaSemanal.atual === 0;
+
+    if (isEmpty) {
+        return (
+            <View style={{ backgroundColor: theme.surface }} className="flex-1 mr-2 p-4 rounded-xl items-center">
+                <View className="items-center justify-center h-[70px]">
+                    <Progress.Circle
+                        size={70}
+                        progress={0}
+                        thickness={6}
+                        color={theme.primary + '30'}
+                        unfilledColor={theme.field}
+                        borderWidth={0}
+                        showsText
+                        formatText={() => '—'}
+                        textStyle={{ color: theme.textSecondary, fontSize: 18, fontWeight: 'bold' }}
+                    />
+                </View>
+                <Text style={{ color: theme.textSecondary }} className="text-xs mt-2">Meta semanal</Text>
+                <View className="flex-row items-center">
+                    <View style={{ backgroundColor: theme.textSecondary + '30' }} className="w-1.5 h-1.5 rounded-full mx-0.5" />
+                    <Text style={{ color: theme.textSecondary }} className="font-medium mx-1">/</Text>
+                    <Text style={{ color: theme.textSecondary }} className="font-medium">{metaSemanal.meta}</Text>
+                    <Text style={{ color: theme.textSecondary }} className="font-medium ml-1">treinos</Text>
+                </View>
+            </View>
+        );
+    }
+
+    return (
+        <View style={{ backgroundColor: theme.surface }} className="flex-1 mr-2 p-4 rounded-xl items-center">
+            <AnimatedProgressCircle
+                progress={progress}
+                size={70}
+                thickness={6}
+                color={theme.primary}
+                unfilledColor={theme.field}
+                delay={animationDelay}
+                duration={1200}
+                theme={theme}
+                animationKey={animationKey}
+            />
+            <Text style={{ color: theme.textSecondary }} className="text-xs mt-2">Meta semanal</Text>
+            <View className="flex-row items-center">
+                <AnimatedNumber
+                    value={metaSemanal.atual}
+                    duration={800}
+                    delay={animationDelay + 400}
+                    style={{ color: theme.text, fontWeight: 'bold' }}
+                    enableHaptics={false}
+                    animationKey={animationKey}
+                />
+                <Text style={{ color: theme.text }} className="font-bold">/{metaSemanal.meta} treinos</Text>
+            </View>
+        </View>
+    );
+};
+
+// Stat row com animação e haptics opcionais
+const AnimatedStatRow = ({
+    icon,
+    label,
+    value,
+    isNumber = false,
+    delay = 0,
+    theme,
+    hasBorder = true,
+    enableHaptics = false,
+    suffix = '',
+    hapticSteps = 8,
+    animationKey = 0,
+}: {
+    icon: React.ReactNode;
+    label: string;
+    value: string | number;
+    isNumber?: boolean;
+    delay?: number;
+    theme: any;
+    hasBorder?: boolean;
+    enableHaptics?: boolean;
+    suffix?: string;
+    hapticSteps?: number;
+    animationKey?: number;
+}) => {
+    const isEmpty = value === 0 || value === '0' || value === '0h 0min';
+
+    return (
+        <View
+            className={`flex-row justify-between py-3 ${hasBorder ? 'border-b' : ''}`}
+            style={hasBorder ? { borderColor: theme.borderSubtle } : {}}
+        >
+            <View className="flex-row items-center">
+                {icon}
+                <Text style={{ color: theme.textSecondary }} className="ml-2">{label}</Text>
+            </View>
+            {isEmpty ? (
+                <View className="flex-row items-center">
+                    <View style={{ backgroundColor: theme.textSecondary + '30' }} className="w-2 h-2 rounded-full mx-0.5" />
+                    <View style={{ backgroundColor: theme.textSecondary + '30' }} className="w-2 h-2 rounded-full mx-0.5" />
+                    <View style={{ backgroundColor: theme.textSecondary + '30' }} className="w-2 h-2 rounded-full mx-0.5" />
+                </View>
+            ) : isNumber ? (
+                <AnimatedNumber
+                    value={typeof value === 'number' ? value : parseFloat(value)}
+                    duration={1000}
+                    delay={delay}
+                    suffix={suffix}
+                    style={{ color: theme.text, fontWeight: 'bold' }}
+                    enableHaptics={enableHaptics}
+                    hapticSteps={hapticSteps}
+                    animationKey={animationKey}
+                />
+            ) : (
+                <Text style={{ color: theme.text }} className="font-bold">{value}</Text>
+            )}
+        </View>
+    );
+};
+
+// Dados padrão (vazios)
+const emptyStats: UserStats = {
     totalTreinos: 0,
     tempoTotal: '0h 0min',
     volumeTotal: 0,
@@ -587,14 +824,46 @@ const defaultStats: UserStats = {
     progressao: []
 };
 
+// Dados mockados para testar animações
+const mockStats: UserStats = {
+    totalTreinos: 47,
+    tempoTotal: '32h 15min',
+    volumeTotal: 128450,
+    streak: {
+        current: 12,
+        best: 15,
+        trainedToday: true,
+        atRisk: false,
+        freezesAvailable: 2
+    },
+    metaSemanal: { atual: 3, meta: 4 },
+    progressao: [
+        { exercicio: 'Supino Reto', cargaInicial: 60, cargaAtual: 80, evolucao: 20 },
+        { exercicio: 'Agachamento', cargaInicial: 80, cargaAtual: 110, evolucao: 30 },
+        { exercicio: 'Levantamento Terra', cargaInicial: 100, cargaAtual: 140, evolucao: 40 },
+    ]
+};
+
 export const ProfileScreen = () => {
     const { theme } = useTheme();
     const { user, signOut, deleteAccount } = useAuth();
-    const [stats, setStats] = useState<UserStats>(defaultStats);
+    const { useMockData, toggleMockData: toggleMock } = useDev();
+    const [stats, setStats] = useState<UserStats>(emptyStats); // Começa vazio
     const [loading, setLoading] = useState(true);
+    const [animationKey, setAnimationKey] = useState(0);
     const scrollViewRef = useRef<ScrollView>(null);
 
+    // Toggle entre dados vazios e mockados (global)
+    const toggleMockData = () => {
+        CoreHaptics.tap.rigid(); // Clique mecânico de switch
+        toggleMock();
+        // Atualiza direto sem delay
+        setStats(!useMockData ? mockStats : emptyStats);
+        setAnimationKey(prev => prev + 1);
+    };
+
     const handleLogout = () => {
+        CoreHaptics.tap.medium();
         Alert.alert(
             'Sair da conta',
             'Tem certeza que deseja sair?',
@@ -616,6 +885,7 @@ export const ProfileScreen = () => {
     };
 
     const handleDeleteAccount = () => {
+        CoreHaptics.patterns.warning(); // 2 taps de aviso
         Alert.alert(
             'Excluir conta',
             'Tem certeza que deseja excluir sua conta?\n\nTodos os seus treinos serão apagados permanentemente. Esta ação não pode ser desfeita.',
@@ -637,17 +907,45 @@ export const ProfileScreen = () => {
         );
     };
 
-    // Carrega stats do banco
-    const loadStats = useCallback(async () => {
+    // DEBUG: Forçar sync manualmente
+    const [isSyncing, setIsSyncing] = useState(false);
+    const handleForceSync = async () => {
+        CoreHaptics.tap.medium();
+        setIsSyncing(true);
         try {
-            const data = await getUserStats();
+            await triggerSync();
+            CoreHaptics.patterns.success();
+            Alert.alert('Sync completo', 'Sincronização concluída com sucesso!');
+        } catch (error: any) {
+            CoreHaptics.patterns.error();
+            Alert.alert('Erro no Sync', error.message || 'Erro desconhecido');
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
+    // Carrega stats do banco (ou mock se ativado)
+    const loadStats = useCallback(async () => {
+        setLoading(true);
+
+        if (useMockData) {
+            setStats(mockStats);
+            setAnimationKey(prev => prev + 1);
+            setLoading(false);
+            return;
+        }
+
+        try {
+            const data = await getUserStats(true);
             setStats(data);
+            setAnimationKey(prev => prev + 1);
         } catch (error) {
             console.error('[ProfileScreen] Error loading stats:', error);
+            // Mantém os stats anteriores em caso de erro
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [useMockData]);
 
     // Recarrega quando a tela ganha foco e volta ao topo
     useFocusEffect(
@@ -657,12 +955,8 @@ export const ProfileScreen = () => {
         }, [loadStats])
     );
 
-    const metaProgress = stats.metaSemanal.meta > 0
-        ? stats.metaSemanal.atual / stats.metaSemanal.meta
-        : 0;
-
     const { getItemStyle } = useScreenAnimation({
-        itemCount: 6,
+        itemCount: 7,
         staggerDelay: 80,
         duration: 450,
         bounceHeight: 12,
@@ -675,6 +969,23 @@ export const ProfileScreen = () => {
             className="flex-1 px-5 pt-16"
             showsVerticalScrollIndicator={false}
         >
+            {/* Toggle Mock Data - DEV */}
+            <TouchableOpacity
+                onPress={toggleMockData}
+                style={{
+                    backgroundColor: useMockData ? theme.primary : theme.surface,
+                    position: 'absolute',
+                    top: 16,
+                    right: 0,
+                    zIndex: 10,
+                }}
+                className="px-3 py-1.5 rounded-full"
+            >
+                <Text style={{ color: useMockData ? '#fff' : theme.textSecondary }} className="text-xs font-medium">
+                    {useMockData ? '✨ Mock' : '📭 Vazio'}
+                </Text>
+            </TouchableOpacity>
+
             {/* Header do perfil */}
             <Animated.View style={getItemStyle(0)} className="items-center mb-6">
                 <View
@@ -701,80 +1012,55 @@ export const ProfileScreen = () => {
                 </View>
             </Animated.View>
 
-            {/* Stats Cards */}
-            <Animated.View style={getItemStyle(1)} className="flex-row justify-between mb-4">
-                <View style={{ backgroundColor: theme.surface }} className="flex-1 mr-2 p-4 rounded-xl items-center">
-                    <Progress.Circle
-                        size={70}
-                        progress={metaProgress}
-                        thickness={6}
-                        color={theme.primary}
-                        unfilledColor={theme.field}
-                        borderWidth={0}
-                        showsText
-                        formatText={() => `${Math.round(metaProgress * 100)}%`}
-                        textStyle={{ color: theme.text, fontSize: 14, fontWeight: 'bold' }}
-                    />
-                    <Text style={{ color: theme.textSecondary }} className="text-xs mt-2">Meta semanal</Text>
-                    <Text style={{ color: theme.text }} className="font-bold">
-                        {stats.metaSemanal.atual}/{stats.metaSemanal.meta} treinos
-                    </Text>
-                </View>
-
-                <View style={{ backgroundColor: theme.surface }} className="flex-1 ml-2 p-4 rounded-xl items-center">
-                    <View className="items-center justify-center h-[70px]">
-                        <Fire
-                            size={32}
-                            color={stats.streak.atRisk ? '#fbbf24' : '#f97316'}
-                            weight="fill"
-                        />
-                        <Text style={{ color: theme.text }} className="text-2xl font-bold mt-1">
-                            {stats.streak.current}
-                        </Text>
-                    </View>
-                    <Text style={{ color: theme.textSecondary }} className="text-xs mt-2">
-                        {stats.streak.atRisk ? 'Streak em risco!' : 'Streak'}
-                    </Text>
-                    <Text style={{ color: theme.text }} className="font-bold">
-                        {stats.streak.trainedToday ? 'treinou hoje' : 'dias seguidos'}
-                    </Text>
-                    {stats.streak.best > stats.streak.current && (
-                        <Text style={{ color: theme.textSecondary }} className="text-xs mt-1">
-                            Recorde: {stats.streak.best}
-                        </Text>
-                    )}
-                </View>
+            {/* Stats Cards - Meta semanal e Streak */}
+            <Animated.View style={getItemStyle(1)} className="flex-row justify-between mb-4" key={animationKey}>
+                <WeeklyGoalCard
+                    metaSemanal={stats.metaSemanal}
+                    theme={theme}
+                    animationDelay={200}
+                    animationKey={animationKey}
+                />
+                <StreakCard
+                    streak={stats.streak}
+                    theme={theme}
+                    animationDelay={400}
+                    animationKey={animationKey}
+                />
             </Animated.View>
 
             {/* Estatísticas gerais */}
             <Animated.View style={[getItemStyle(2), { backgroundColor: theme.surface }]} className="p-4 rounded-xl mb-4">
                 <Text style={{ color: theme.text }} className="font-bold text-lg mb-3">Estatísticas</Text>
 
-                <View className="flex-row justify-between py-3 border-b" style={{ borderColor: theme.borderSubtle }}>
-                    <View className="flex-row items-center">
-                        <Barbell size={20} color={theme.textSecondary} />
-                        <Text style={{ color: theme.textSecondary }} className="ml-2">Total de treinos</Text>
-                    </View>
-                    <Text style={{ color: theme.text }} className="font-bold">{stats.totalTreinos}</Text>
-                </View>
-
-                <View className="flex-row justify-between py-3 border-b" style={{ borderColor: theme.borderSubtle }}>
-                    <View className="flex-row items-center">
-                        <Timer size={20} color={theme.textSecondary} />
-                        <Text style={{ color: theme.textSecondary }} className="ml-2">Tempo total</Text>
-                    </View>
-                    <Text style={{ color: theme.text }} className="font-bold">{stats.tempoTotal}</Text>
-                </View>
-
-                <View className="flex-row justify-between py-3">
-                    <View className="flex-row items-center">
-                        <Trophy size={20} color={theme.textSecondary} />
-                        <Text style={{ color: theme.textSecondary }} className="ml-2">Volume total</Text>
-                    </View>
-                    <Text style={{ color: theme.text }} className="font-bold">
-                        {stats.volumeTotal.toLocaleString()} kg
-                    </Text>
-                </View>
+                <AnimatedStatRow
+                    icon={<Barbell size={20} color={theme.textSecondary} />}
+                    label="Total de treinos"
+                    value={stats.totalTreinos}
+                    isNumber={true}
+                    delay={600}
+                    theme={theme}
+                    animationKey={animationKey}
+                />
+                <AnimatedStatRow
+                    icon={<Timer size={20} color={theme.textSecondary} />}
+                    label="Tempo total"
+                    value={stats.tempoTotal}
+                    delay={700}
+                    theme={theme}
+                    animationKey={animationKey}
+                />
+                <AnimatedStatRow
+                    icon={<Trophy size={20} color={theme.textSecondary} />}
+                    label="Volume total"
+                    value={stats.volumeTotal}
+                    isNumber={true}
+                    delay={800}
+                    theme={theme}
+                    hasBorder={false}
+                    enableHaptics={true}
+                    suffix=" kg"
+                    animationKey={animationKey}
+                />
             </Animated.View>
 
             {/* Progressão */}
@@ -835,6 +1121,19 @@ export const ProfileScreen = () => {
                         {user.email}
                     </Text>
                 )}
+
+                {/* DEBUG: Botão de Sync */}
+                <TouchableOpacity
+                    onPress={handleForceSync}
+                    disabled={isSyncing}
+                    className="flex-row items-center py-3 border-b"
+                    style={{ borderColor: theme.borderSubtle, opacity: isSyncing ? 0.5 : 1 }}
+                >
+                    <ArrowsClockwise size={20} color={theme.primary} weight={isSyncing ? 'bold' : 'regular'} />
+                    <Text style={{ color: theme.primary }} className="ml-3 flex-1">
+                        {isSyncing ? 'Sincronizando...' : 'Forçar Sync (Debug)'}
+                    </Text>
+                </TouchableOpacity>
 
                 <TouchableOpacity
                     onPress={handleLogout}
