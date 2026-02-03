@@ -1,11 +1,11 @@
 import React, { memo, useCallback, useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { useTheme } from '../theme';
-import { DotsThree, Link, CaretUp } from 'phosphor-react-native';
+import { CaretUp } from 'phosphor-react-native';
 import { SetRow } from './SetRow';
 import { SetType } from './SetTypeModal';
 import { ExercisePickerModal } from './ExercisePickerModal';
-import {opacity} from "react-native-reanimated/lib/typescript/Colors";
+import { ActionDropdown, DropdownOption } from './ActionDropdown';
 
 interface ExerciseSet {
     id: string;
@@ -36,6 +36,7 @@ interface ExerciseCardProps {
     onReplaceExercise?: (exerciseId: string, newName: string) => void;
     onRemoveSet?: (exerciseId: string, setId: string) => void;
     onToggleSuperset?: (exerciseId: string) => void;
+    onRemoveExercise?: (exerciseId: string) => void;
     isSuperset?: boolean;
     supersetPosition?: 'first' | 'last' | 'middle';
     isSupersetLinkedWithNext?: boolean;
@@ -53,6 +54,7 @@ const ExerciseCardComponent = ({
     onReplaceExercise,
     onRemoveSet,
     onToggleSuperset,
+    onRemoveExercise,
     isSuperset = false,
     supersetPosition,
     isSupersetLinkedWithNext = false,
@@ -98,6 +100,66 @@ const ExerciseCardComponent = ({
             onToggleSuperset(exerciseId);
         }
     }, [exerciseId, onToggleSuperset]);
+
+    const handleRemoveExercise = useCallback(() => {
+        Alert.alert(
+            'Remover Exercício',
+            `Tem certeza que deseja remover "${name}"?`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Remover',
+                    style: 'destructive',
+                    onPress: () => onRemoveExercise?.(exerciseId)
+                }
+            ]
+        );
+    }, [exerciseId, name, onRemoveExercise]);
+
+    // Opções do dropdown do exercício
+    const exerciseMenuOptions = useMemo<DropdownOption[]>(() => {
+        const options: DropdownOption[] = [
+            {
+                id: 'note',
+                label: 'Adicionar nota',
+                icon: 'note',
+                onPress: () => {
+                    // TODO: Implementar modal de nota
+                    Alert.alert('Em breve', 'Notas serão implementadas em breve!');
+                },
+            },
+            {
+                id: 'replace',
+                label: 'Trocar exercício',
+                icon: 'edit',
+                onPress: () => setShowExercisePicker(true),
+            },
+        ];
+
+        // Adiciona opção de superset se disponível
+        if (onToggleSuperset) {
+            options.push({
+                id: 'superset',
+                label: isSupersetLinkedWithNext ? 'Remover superset' : 'Criar superset',
+                icon: isSupersetLinkedWithNext ? 'unlink' : 'link',
+                color: isSupersetLinkedWithNext ? '#10b981' : undefined,
+                onPress: handleToggleSuperset,
+            });
+        }
+
+        // Adiciona opção de remover
+        if (onRemoveExercise) {
+            options.push({
+                id: 'remove',
+                label: 'Remover exercício',
+                icon: 'delete',
+                destructive: true,
+                onPress: handleRemoveExercise,
+            });
+        }
+
+        return options;
+    }, [onToggleSuperset, isSupersetLinkedWithNext, handleToggleSuperset, onRemoveExercise, handleRemoveExercise]);
 
     // Estilos computados com useMemo
     const containerStyle = useMemo(() => {
@@ -181,19 +243,15 @@ const ExerciseCardComponent = ({
                     </Text>
                     <CaretUp size={16} color={theme.primary} weight="bold" style={{ marginLeft: 4 }} />
                 </TouchableOpacity>
-                <View className="flex-row gap-4 ml-2">
-                    {onToggleSuperset && (
-                        <TouchableOpacity onPress={handleToggleSuperset}>
-                            <Link
-                                size={20}
-                                color={isSupersetLinkedWithNext ? '#10b981' : theme.textSecondary}
-                                weight={isSupersetLinkedWithNext ? 'bold' : 'regular'}
-                            />
-                        </TouchableOpacity>
-                    )}
-                    <TouchableOpacity>
-                        <DotsThree size={20} color={theme.primary} weight="bold" />
-                    </TouchableOpacity>
+
+                {/* Menu de opções usando ActionDropdown */}
+                <View className="ml-2">
+                    <ActionDropdown
+                        options={exerciseMenuOptions}
+                        iconSize={20}
+                        iconColor={theme.primary}
+                        anchor="right"
+                    />
                 </View>
             </View>
 
@@ -263,7 +321,8 @@ export const ExerciseCard = memo(ExerciseCardComponent, (prevProps, nextProps) =
         prevProps.isSuperset !== nextProps.isSuperset ||
         prevProps.supersetPosition !== nextProps.supersetPosition ||
         prevProps.isSupersetLinkedWithNext !== nextProps.isSupersetLinkedWithNext ||
-        (prevProps.onToggleSuperset !== undefined) !== (nextProps.onToggleSuperset !== undefined)
+        (prevProps.onToggleSuperset !== undefined) !== (nextProps.onToggleSuperset !== undefined) ||
+        (prevProps.onRemoveExercise !== undefined) !== (nextProps.onRemoveExercise !== undefined)
     ) {
         return false;
     }

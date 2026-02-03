@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useState, useEffect, useRef } from 'react';
+import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Animated, {
     useSharedValue,
@@ -20,6 +20,7 @@ import { SetTypeDropdown } from './SetTypeDropdown';
 import { KeyboardInput } from './KeyboardInput';
 import { CoreHaptics } from 'expo-core-haptics';
 
+// ========== TIPOS ==========
 interface SetRowProps {
     setId: string;
     index: number;
@@ -43,8 +44,20 @@ interface SetRowProps {
     onRemove?: (setId: string) => void;
 }
 
+// ========== CONSTANTES ==========
 const SWIPE_THRESHOLD = -80;
 
+// Cores por tipo de série
+const SET_TYPE_COLORS: Record<SetType, { bg: string; fill: string }> = {
+    'N': { bg: 'transparent', fill: '#22c55e20' }, // Normal - verde
+    'W': { bg: '#f59e0b15', fill: '#f59e0b30' },   // Aquecimento - laranja
+    'D': { bg: '#a855f715', fill: '#a855f730' },   // Drop set - roxo
+    'F': { bg: '#ef444415', fill: '#ef444430' },   // Falha - vermelho
+    'R': { bg: '#06b6d415', fill: '#06b6d430' },   // Rest-Pause - ciano
+    'S': { bg: '#10b98115', fill: '#10b98130' },   // Superset - esmeralda
+};
+
+// ========== COMPONENTE ==========
 const SetRowComponent = ({
     setId,
     index,
@@ -65,23 +78,15 @@ const SetRowComponent = ({
 }: SetRowProps) => {
     const { theme } = useTheme();
 
-    // ========== ANIMAÇÕES ESSENCIAIS ==========
-    // Swipe-to-delete
+    // ========== ANIMAÇÕES ==========
     const translateX = useSharedValue(0);
     const deleteOpacity = useSharedValue(0);
-
-    // Shake para erro
     const shakeX = useSharedValue(0);
-
-    // Animação do checkbox (scale)
     const checkScale = useSharedValue(completed ? 1 : 0);
-
-    // Animação de completar: verde preenchendo + flash
     const fillProgress = useSharedValue(completed ? 1 : 0);
     const flashOpacity = useSharedValue(0);
 
-
-    // ========== ESTADO DE ERRO ==========
+    // ========== ESTADO ==========
     const [kgError, setKgError] = useState(false);
     const [repsError, setRepsError] = useState(false);
 
@@ -90,7 +95,15 @@ const SetRowComponent = ({
     const repsInputId = `${setId}-reps`;
     const rirInputId = `${setId}-rir`;
 
-    // Handler para deletar a série
+    // ========== CORES COMPUTADAS ==========
+    const typeColors = useMemo(() => SET_TYPE_COLORS[type] || SET_TYPE_COLORS['N'], [type]);
+
+    // Verifica se é série de "falha" (tipo F ou RIR 0)
+    const isFailureSet = useMemo(() => {
+        return type === 'F' || (rir !== '' && parseFloat(rir) === 0);
+    }, [type, rir]);
+
+    // ========== HANDLERS ==========
     const handleRemove = useCallback(() => {
         if (onRemove) {
             if (CoreHaptics.isSupported()) {
@@ -123,53 +136,6 @@ const SetRowComponent = ({
             }
         });
 
-    // Estilo da row (swipe + shake)
-    const rowAnimatedStyle = useAnimatedStyle(() => ({
-        transform: [
-            { translateX: translateX.value + shakeX.value },
-        ],
-    }));
-
-    // Estilo do botão de delete
-    const deleteButtonStyle = useAnimatedStyle(() => ({
-        opacity: deleteOpacity.value,
-    }));
-
-    // Estilo do check icon (animação de scale)
-    const checkAnimatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: checkScale.value }],
-        opacity: checkScale.value,
-    }));
-
-    // Estilo do preenchimento verde (de cima pra baixo)
-    // Usa scaleY para animação suave (0 = invisível, 1 = completo)
-    const fillAnimatedStyle = useAnimatedStyle(() => {
-        'worklet';
-        return {
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: '#22c55e20',
-            transform: [
-                { scaleY: fillProgress.value },
-            ],
-            transformOrigin: 'top',
-        };
-    });
-
-    // Estilo do flash branco
-    const flashAnimatedStyle = useAnimatedStyle(() => ({
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: '#ffffff',
-        opacity: flashOpacity.value,
-    }));
-
     // Trigger shake animation
     const triggerShake = useCallback(() => {
         shakeX.value = withSequence(
@@ -181,7 +147,6 @@ const SetRowComponent = ({
         );
     }, [shakeX]);
 
-    // ========== HANDLERS ==========
     const handleToggle = useCallback(() => {
         if (!completed) {
             const missingKg = !kg || kg.trim() === '';
@@ -204,47 +169,66 @@ const SetRowComponent = ({
                 return;
             }
 
-            // Duração total da animação de preenchimento
-            const fillDuration = 400; // Velocidade normal (um pouco mais lento que 280)
+            // Duração baseada no tipo de série
+            // Falha ou RIR 0 = animação mais lenta e "pesada"
+            const isSlowAnimation = isFailureSet;
+            const fillDuration = isSlowAnimation ? 600 : 400;
             const flashDelay = fillDuration - 60;
-            const flashRiseDuration = 60;
+            const flashRiseDuration = isSlowAnimation ? 80 : 60;
             const flashPeakTime = flashDelay + flashRiseDuration;
 
-            // 1. Preenche de verde de cima pra baixo - LINEAR
+            // 1. Preenche de cima pra baixo - LINEAR
             fillProgress.value = withTiming(1, {
                 duration: fillDuration,
                 easing: Easing.linear,
             });
 
-            // 2. Flash branco no final do preenchimento
+            // 2. Flash no final do preenchimento
             flashOpacity.value = withDelay(
                 flashDelay,
                 withSequence(
-                    withTiming(0.3, { duration: flashRiseDuration }),
-                    withTiming(0, { duration: 80 })
+                    withTiming(isSlowAnimation ? 0.4 : 0.3, { duration: flashRiseDuration }),
+                    withTiming(0, { duration: isSlowAnimation ? 120 : 80 })
                 )
             );
 
             // 3. Check aparece quando flash está no pico
             checkScale.value = withDelay(
                 flashPeakTime,
-                withTiming(1, { duration: 80, easing: Easing.out(Easing.back(1.5)) })
+                withTiming(1, {
+                    duration: isSlowAnimation ? 120 : 80,
+                    easing: Easing.out(Easing.back(1.5))
+                })
             );
 
-            // 4. Haptic RAMP contínuo: grave → médio-agudo
+            // 4. Haptic
             if (CoreHaptics.isSupported()) {
-                CoreHaptics.ramp.custom(
-                    0.5,  // fromIntensity: começa médio
-                    0.6,  // toIntensity: termina médio-forte
-                    0.15, // fromSharpness: começa grave
-                    0.6,  // toSharpness: termina médio-agudo
-                    fillDuration / 1000
-                );
-
-                // HEAVY no pico do flash
-                setTimeout(() => {
-                    CoreHaptics.tap.heavy();
-                }, flashPeakTime);
+                if (isSlowAnimation) {
+                    // Haptic mais pesado e lento para falha
+                    CoreHaptics.ramp.custom(
+                        0.4,  // fromIntensity: começa mais suave
+                        0.8,  // toIntensity: termina mais forte
+                        0.1,  // fromSharpness: bem grave
+                        0.4,  // toSharpness: médio
+                        fillDuration / 1000
+                    );
+                    setTimeout(() => {
+                        CoreHaptics.tap.heavy();
+                        setTimeout(() => CoreHaptics.tap.heavy(), 50); // Double tap pesado
+                    }, flashPeakTime);
+                } else {
+                    // Haptic normal
+                    CoreHaptics.ramp.custom(
+                        0.5,
+                        0.6,
+                        0.15,
+                        0.6,
+                        fillDuration / 1000
+                    );
+                    setTimeout(() => {
+                        CoreHaptics.tap.heavy();
+                    }, flashPeakTime);
+                }
             }
         } else {
             // Descompletando - reverte tudo
@@ -253,7 +237,7 @@ const SetRowComponent = ({
         }
 
         onToggle(setId);
-    }, [setId, onToggle, completed, kg, reps, triggerShake, checkScale]);
+    }, [setId, onToggle, completed, kg, reps, triggerShake, checkScale, isFailureSet]);
 
     const handleChangeType = useCallback((newType: SetType) => {
         onChangeType(setId, newType);
@@ -273,11 +257,55 @@ const SetRowComponent = ({
         return `${weight}kg x ${prReps}${rirStr}`;
     }, [prData, prev]);
 
+    // ========== ESTILOS ANIMADOS ==========
+    const rowAnimatedStyle = useAnimatedStyle(() => ({
+        transform: [
+            { translateX: translateX.value + shakeX.value },
+        ],
+    }));
+
+    const deleteButtonStyle = useAnimatedStyle(() => ({
+        opacity: deleteOpacity.value,
+    }));
+
+    const checkAnimatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: checkScale.value }],
+        opacity: checkScale.value,
+    }));
+
+    // Cor do fill baseada no tipo
+    const fillAnimatedStyle = useAnimatedStyle(() => {
+        'worklet';
+        return {
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: typeColors.fill,
+            transform: [
+                { scaleY: fillProgress.value },
+            ],
+            transformOrigin: 'top',
+        };
+    });
+
+    const flashAnimatedStyle = useAnimatedStyle(() => ({
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: '#ffffff',
+        opacity: flashOpacity.value,
+    }));
+
     // ========== ESTILOS COMPUTADOS ==========
     const checkboxBackgroundColor = completed ? '#22c55e' : theme.field;
     const checkboxBorderColor = completed ? '#22c55e' : theme.textSecondary + '40';
-    const anteriorTextColor = completed ? theme.textSecondary : theme.text;
-    const anteriorOpacity = completed ? 0.5 : 1;
+
+    // Opacidade dos campos quando completado (estilo disabled)
+    const fieldOpacity = completed ? 0.5 : 1;
 
     // Placeholders baseados no PR
     const kgPlaceholder = prData ? String(prData.weight) : '-';
@@ -297,22 +325,28 @@ const SetRowComponent = ({
                 <Animated.View
                     style={[
                         styles.row,
-                        { backgroundColor: theme.surface },
+                        {
+                            backgroundColor: completed ? theme.surface : (typeColors.bg !== 'transparent' ? typeColors.bg : theme.surface),
+                        },
                         rowAnimatedStyle
                     ]}
                 >
-                    {/* Preenchimento verde animado */}
+                    {/* Preenchimento animado */}
                     <Animated.View style={fillAnimatedStyle} pointerEvents="none" />
 
-                    {/* Flash branco */}
+                    {/* Flash */}
                     <Animated.View style={flashAnimatedStyle} pointerEvents="none" />
-                    {/* Set Number / Type - Dropdown */}
-                    <SetTypeDropdown
-                        currentType={type}
-                        index={index}
-                        completed={completed}
-                        onSelect={handleChangeType}
-                    />
+
+                    {/* Set Number / Type - Dropdown (desabilitado se completed) */}
+                    <View style={{ opacity: fieldOpacity }}>
+                        <SetTypeDropdown
+                            currentType={type}
+                            index={index}
+                            completed={completed}
+                            onSelect={handleChangeType}
+                            disabled={completed}
+                        />
+                    </View>
 
                     {/* PR - Clicável para preencher campos */}
                     <TouchableOpacity
@@ -320,12 +354,10 @@ const SetRowComponent = ({
                         onPress={handleFillFromPR}
                         disabled={completed}
                         activeOpacity={completed ? 1 : 0.6}
+                        style={{ opacity: fieldOpacity }}
                     >
                         <Text
-                            style={{
-                                color: anteriorTextColor,
-                                opacity: anteriorOpacity,
-                            }}
+                            style={{ color: theme.text }}
                             className="text-xs text-center"
                         >
                             {formatPR()}
@@ -333,7 +365,7 @@ const SetRowComponent = ({
                     </TouchableOpacity>
 
                     {/* KG */}
-                    <View className="flex-1 items-center justify-center mx-1">
+                    <View className="flex-1 items-center justify-center mx-1" style={{ opacity: fieldOpacity }}>
                         <KeyboardInput
                             id={kgInputId}
                             value={kg}
@@ -347,7 +379,7 @@ const SetRowComponent = ({
                     </View>
 
                     {/* Reps */}
-                    <View className="flex-1 items-center justify-center mx-1">
+                    <View className="flex-1 items-center justify-center mx-1" style={{ opacity: fieldOpacity }}>
                         <KeyboardInput
                             id={repsInputId}
                             value={reps}
@@ -362,7 +394,7 @@ const SetRowComponent = ({
                     </View>
 
                     {/* RIR */}
-                    <View className="flex-1 items-center justify-center mx-1">
+                    <View className="flex-1 items-center justify-center mx-1" style={{ opacity: fieldOpacity }}>
                         <KeyboardInput
                             id={rirInputId}
                             value={rir}
@@ -375,7 +407,7 @@ const SetRowComponent = ({
                         />
                     </View>
 
-                    {/* Checkbox com animação leve */}
+                    {/* Checkbox */}
                     <TouchableOpacity
                         onPress={handleToggle}
                         style={[
@@ -398,7 +430,7 @@ const SetRowComponent = ({
     );
 };
 
-// Memoização com comparação otimizada
+// ========== MEMOIZAÇÃO ==========
 export const SetRow = memo(SetRowComponent, (prevProps, nextProps) => {
     return (
         prevProps.kg === nextProps.kg &&
@@ -414,6 +446,7 @@ export const SetRow = memo(SetRowComponent, (prevProps, nextProps) => {
     );
 });
 
+// ========== ESTILOS ==========
 const styles = StyleSheet.create({
     swipeContainer: {
         position: 'relative',
@@ -434,7 +467,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 8,
-        overflow: 'hidden', // Contém o preenchimento verde
+        overflow: 'hidden',
         minHeight: 48,
     },
     checkbox: {

@@ -677,7 +677,16 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
                 ...ex,
                 sets: ex.sets.map(s => {
                     if (s.id !== setId) return s;
-                    return { ...s, [field]: value };
+
+                    // Auto-marca como Falha (F) quando RIR é 0
+                    let newType = s.type;
+                    if (field === 'rir' && value === '0' && s.type !== 'F') {
+                        newType = 'F' as SetType;
+                        // Atualiza tipo no DB
+                        updateLocalSet(s.localId, { set_type: 'F' }).catch(console.error);
+                    }
+
+                    return { ...s, [field]: value, type: newType };
                 })
             };
         }));

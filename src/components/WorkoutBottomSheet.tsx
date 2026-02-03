@@ -82,7 +82,9 @@ const ExerciseList = memo(({
     onChangeSetType,
     onFillFromPR,
     onReplaceExercise,
-    onRemoveSet
+    onRemoveSet,
+    onToggleSuperset,
+    onRemoveExercise,
 }: {
     exercises: any[];
     isActive: boolean;
@@ -93,26 +95,31 @@ const ExerciseList = memo(({
     onFillFromPR: (exerciseId: string, setId: string) => void;
     onReplaceExercise: (exerciseId: string, newName: string) => void;
     onRemoveSet: (exerciseId: string, setId: string) => void;
+    onToggleSuperset: (exerciseId: string) => void;
+    onRemoveExercise: (exerciseId: string) => void;
 }) => {
     return (
         <View style={styles.exercisesContainer}>
             {exercises.map((ex, index) => {
-                // Detecta superset
-                const isSuperset = /[a-z]$/.test(ex.id);
+                // Detecta superset usando o campo supersetWith
+                const prevEx = exercises[index - 1];
+                const nextEx = exercises[index + 1];
+
+                // Está em superset se tem link com exercício anterior ou próximo
+                const linkedWithPrev = prevEx && ex.supersetWith === prevEx.localId;
+                const linkedWithNext = nextEx && ex.supersetWith === nextEx.localId;
+                const isSuperset = linkedWithPrev || linkedWithNext;
+
                 let supersetPosition: 'first' | 'last' | 'middle' | undefined;
-
                 if (isSuperset) {
-                    const baseId = ex.id.slice(0, -1);
-                    const prevEx = exercises[index - 1];
-                    const nextEx = exercises[index + 1];
-                    const prevIsPartner = prevEx && prevEx.id.slice(0, -1) === baseId;
-                    const nextIsPartner = nextEx && nextEx.id.slice(0, -1) === baseId;
-
-                    if (!prevIsPartner && nextIsPartner) supersetPosition = 'first';
-                    else if (prevIsPartner && !nextIsPartner) supersetPosition = 'last';
-                    else if (prevIsPartner && nextIsPartner) supersetPosition = 'middle';
+                    if (!linkedWithPrev && linkedWithNext) supersetPosition = 'first';
+                    else if (linkedWithPrev && !linkedWithNext) supersetPosition = 'last';
+                    else if (linkedWithPrev && linkedWithNext) supersetPosition = 'middle';
                     else supersetPosition = 'first';
                 }
+
+                // Pode criar superset se tem próximo exercício e não está já em superset com o anterior
+                const canToggleSuperset = nextEx !== undefined;
 
                 return (
                     <ExerciseCard
@@ -127,8 +134,11 @@ const ExerciseList = memo(({
                         onFillFromPR={onFillFromPR}
                         onReplaceExercise={onReplaceExercise}
                         onRemoveSet={onRemoveSet}
+                        onToggleSuperset={canToggleSuperset ? onToggleSuperset : undefined}
+                        onRemoveExercise={onRemoveExercise}
                         isSuperset={isSuperset}
                         supersetPosition={supersetPosition}
+                        isSupersetLinkedWithNext={linkedWithNext}
                     />
                 );
             })}
@@ -154,6 +164,8 @@ const WorkoutContent = memo(({
     handleFillFromPR,
     handleReplaceExercise,
     handleRemoveSet,
+    handleToggleSuperset,
+    handleRemoveExercise,
     handleAddExercise,
     handleCancel,
     workoutMenuOptions,
@@ -203,6 +215,8 @@ const WorkoutContent = memo(({
                 onFillFromPR={handleFillFromPR}
                 onReplaceExercise={handleReplaceExercise}
                 onRemoveSet={handleRemoveSet}
+                onToggleSuperset={handleToggleSuperset}
+                onRemoveExercise={handleRemoveExercise}
             />
 
             {/* Botões de ação */}
@@ -247,7 +261,9 @@ export const WorkoutBottomSheet = () => {
         changeSetType,
         fillFromPR,
         replaceExercise,
-        removeSet
+        removeExercise,
+        removeSet,
+        toggleSuperset,
     } = useWorkout();
 
     const [showAddExercise, setShowAddExercise] = useState(false);
@@ -295,6 +311,10 @@ export const WorkoutBottomSheet = () => {
         haptics.finishWorkout();
         cancelWorkout();
     }, [haptics, cancelWorkout]);
+
+    const handleToggleSuperset = useCallback((exerciseId: string) => {
+        toggleSuperset(exerciseId);
+    }, [toggleSuperset]);
 
     // ========== VALORES MEMOIZADOS ==========
     const navbarHeight = TAB_BAR_HEIGHT + insets.bottom;
@@ -490,6 +510,8 @@ export const WorkoutBottomSheet = () => {
                             handleFillFromPR={fillFromPR}
                             handleReplaceExercise={replaceExercise}
                             handleRemoveSet={removeSet}
+                            handleToggleSuperset={handleToggleSuperset}
+                            handleRemoveExercise={removeExercise}
                             handleAddExercise={handleAddExercise}
                             handleCancel={handleCancel}
                             workoutMenuOptions={workoutMenuOptions}

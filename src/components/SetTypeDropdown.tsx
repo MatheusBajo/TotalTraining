@@ -31,6 +31,7 @@ interface SetTypeDropdownProps {
     currentType: SetType;
     index: number;
     completed?: boolean;
+    disabled?: boolean;
     onSelect: (type: SetType) => void;
 }
 
@@ -48,7 +49,7 @@ const getTypeStyles = (type: SetType, defaultColor: string) => {
 
 const ANIMATION_DURATION = 170;
 
-export const SetTypeDropdown = ({ currentType, index, completed = false, onSelect }: SetTypeDropdownProps) => {
+export const SetTypeDropdown = ({ currentType, index, completed = false, disabled = false, onSelect }: SetTypeDropdownProps) => {
     const { theme } = useTheme();
     const [modalVisible, setModalVisible] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
@@ -63,12 +64,14 @@ export const SetTypeDropdown = ({ currentType, index, completed = false, onSelec
     const buttonBg = completed ? 'transparent' : typeStyles.bg;
 
     const handlePress = useCallback(() => {
+        if (disabled) return;
+
         buttonRef.current?.measureInWindow((x, y) => {
             setPosition({ x, y });
             setIsClosing(false);
             setModalVisible(true);
         });
-    }, []);
+    }, [disabled]);
 
     // Anima entrada quando modal abre
     useEffect(() => {
