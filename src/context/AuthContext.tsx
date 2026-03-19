@@ -1,6 +1,9 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const CACHED_USER_KEY = 'totaltraining:cachedUser';
 
 interface AuthContextType {
     user: User | null;
@@ -18,6 +21,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [session, setSession] = useState<Session | null>(null);
     const [loading, setLoading] = useState(true);
+    // true = o user fez signOut explícito (não por falha de rede)
+    const explicitSignOutRef = useRef(false);
 
     useEffect(() => {
         let mounted = true;
@@ -30,15 +35,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     if (error) {
                         console.log('[Auth] Error getting session:', error.message);
                     }
-                    setSession(session);
-                    setUser(session?.user ?? null);
+                    if (session?.user) {
+                        setSession(session);
+                        setUser(session.user);
+                        // Salva user para fallback offline
+                        AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(session.user)).catch(() => {});
+                    } else {
+                        // Sem sessão — tenta fallback offline
+                        await loadCachedUser();
+                    }
                     setLoading(false);
                 }
             } catch (err) {
                 console.log('[Auth] Exception getting session:', err);
                 if (mounted) {
+                    // Rede caiu — tenta fallback offline
+                    await loadCachedUser();
                     setLoading(false);
                 }
+            }
+        };
+
+        // Carrega user salvo localmente (para uso offline)
+        const loadCachedUser = async () => {
+            try {
+                const cached = await AsyncStorage.getItem(CACHED_USER_KEY);
+                if (cached && mounted) {
+                    const cachedUser = JSON.parse(cached) as User;
+                    console.log('[Auth] Using cached user (offline mode)');
+                    setUser(cachedUser);
+                }
+            } catch {
+                // Sem cache, user fica null → login screen
             }
         };
 
@@ -55,11 +83,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Escuta mudanças de auth
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             console.log('[Auth] State changed:', _event);
-            if (mounted) {
+            if (!mounted) return;
+
+            if (session?.user) {
                 setSession(session);
-                setUser(session?.user ?? null);
-                setLoading(false);
+                setUser(session.user);
+                // Salva user para fallback offline
+                AsyncStorage.setItem(CACHED_USER_KEY, JSON.stringify(session.user)).catch(() => {});
+            } else if (_event === 'SIGNED_OUT' && !explicitSignOutRef.current) {
+                // SIGNED_OUT disparado pelo SDK (ex: token refresh falhou por falta de rede)
+                // NÃO limpa o user — mantém o usuário logado para uso offline
+                console.log('[Auth] Ignoring network-triggered SIGNED_OUT, keeping cached user');
+            } else {
+                // Sign out explícito do usuário
+                setSession(null);
+                setUser(null);
             }
+            setLoading(false);
         });
 
         return () => {
@@ -89,10 +129,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const signOut = async () => {
         setLoading(true);
-        const { error } = await supabase.auth.signOut();
-        if (error) {
+        explicitSignOutRef.current = true;
+        try {
+            // Limpa cache offline
+            await AsyncStorage.removeItem(CACHED_USER_KEY).catch(() => {});
+            setUser(null);
+            setSession(null);
+            const { error } = await supabase.auth.signOut();
+            if (error) throw error;
+        } catch (error) {
+            // Mesmo com erro de rede, o signOut local já aconteceu
+            console.log('[Auth] SignOut error (user already cleared locally):', error);
+        } finally {
+            explicitSignOutRef.current = false;
             setLoading(false);
-            throw error;
         }
     };
 
@@ -107,7 +157,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (deleteError) throw deleteError;
 
-        // Faz logout
+        // Limpa cache e faz logout
+        await AsyncStorage.removeItem(CACHED_USER_KEY).catch(() => {});
         await signOut();
     };
 

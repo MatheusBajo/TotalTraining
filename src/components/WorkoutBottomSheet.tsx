@@ -1,24 +1,32 @@
 import React, { useCallback, useMemo, useRef, useEffect, useState, memo } from 'react';
-import { View, Text, TouchableOpacity, Alert, StyleSheet, Dimensions, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
-import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { View, Text, TouchableOpacity, Alert, StyleSheet, Dimensions, Modal, TextInput, Pressable } from 'react-native';
+import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import Animated, {
+    useSharedValue,
     useAnimatedStyle,
+    useAnimatedReaction,
+    runOnJS,
     interpolate,
     Extrapolation,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
-import { useWorkout } from '../context/WorkoutContext';
+import { useWorkoutTimer, useWorkoutMeta, useWorkoutExercises, useWorkoutActions } from '../context/WorkoutContext';
 import { useSheetAnimation } from '../context/SheetAnimationContext';
-import { Timer, CalendarBlank, Clock, Play } from 'phosphor-react-native';
+import { CalendarBlank, Clock, Play } from 'phosphor-react-native';
 import { ExerciseCard } from './ExerciseCard';
 import { AddExerciseModal } from './AddExerciseModal';
 import { FinishWorkoutModal } from './FinishWorkoutModal';
-import { useHapticPatterns } from '../hooks';
+import { ExercisePickerModal } from './ExercisePickerModal';
+import { useHapticPatterns, useRestTimer } from '../hooks';
 import { KeyboardProvider, useKeyboard } from '../context/KeyboardContext';
 import { CustomKeyboard } from './CustomKeyboard';
-import { OptionsDropdown } from './OptionsDropdown';
-import { RestTimer } from './RestTimer';
+import { ActionDropdown } from './ActionDropdown';
+import { RestTimerButton } from './RestTimerButton';
+import { RestTimerPicker } from './RestTimerPicker';
+import { ExerciseDetailModal } from './ExerciseDetailModal';
+import { RestFinishedModal } from './RestFinishedModal';
+import { CancelWorkoutModal } from './CancelWorkoutModal';
 import * as Clipboard from 'expo-clipboard';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -28,8 +36,12 @@ const KEYBOARD_HEIGHT = 60 * 4 + 24 + 12;
 
 // ========== FUNÇÕES UTILITÁRIAS (fora do componente) ==========
 const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
+    if (hours > 0) {
+        return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
@@ -44,197 +56,332 @@ const formatStartTime = (startedAt: string | null) => {
     return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 };
 
-// ========== SCROLL CONTENT (componente separado) ==========
-const WorkoutScrollContent = memo(({
-    children,
-    onScroll,
-    isKeyboardVisible,
-    bottomInset
-}: {
-    children: React.ReactNode;
-    onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
-    isKeyboardVisible: boolean;
-    bottomInset: number;
-}) => {
-    const paddingBottom = isKeyboardVisible ? KEYBOARD_HEIGHT + bottomInset + 20 : 60;
+// ========== TIMER COMPONENTS (isolados para evitar re-render do handle) ==========
 
+// Timer do header - re-renderiza independentemente a cada segundo
+const HeaderTimer = memo(({ style }: { style?: any }) => {
+    const { duration } = useWorkoutTimer();
     return (
-        <BottomSheetScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.scrollContent, { paddingBottom }]}
-            onScroll={onScroll}
-            scrollEventThrottle={64} // Reduz eventos de scroll para melhor performance
-            bounces={true}
-            overScrollMode="always"
-            keyboardShouldPersistTaps="always"
-            removeClippedSubviews={true}
-        >
-            {children}
-        </BottomSheetScrollView>
+        <Text style={style}>
+            {formatTime(duration)}
+        </Text>
     );
 });
 
-// ========== EXERCISE LIST (componente separado e memoizado) ==========
-const ExerciseList = memo(({
-    exercises,
-    isActive,
-    onAddSet,
-    onUpdateSet,
-    onToggleSet,
-    onChangeSetType,
-    onFillFromPR,
-    onReplaceExercise,
-    onRemoveSet,
-    onToggleSuperset,
-    onRemoveExercise,
-}: {
-    exercises: any[];
-    isActive: boolean;
-    onAddSet: (exerciseId: string) => void;
-    onUpdateSet: (exerciseId: string, setId: string, field: 'kg' | 'reps' | 'rir', value: string) => void;
-    onToggleSet: (exerciseId: string, setId: string) => void;
-    onChangeSetType: (exerciseId: string, setId: string, type: any) => void;
-    onFillFromPR: (exerciseId: string, setId: string) => void;
-    onReplaceExercise: (exerciseId: string, newName: string) => void;
-    onRemoveSet: (exerciseId: string, setId: string) => void;
-    onToggleSuperset: (exerciseId: string) => void;
-    onRemoveExercise: (exerciseId: string) => void;
-}) => {
+// Timer do mini player - re-renderiza independentemente a cada segundo
+const MiniPlayerTimer = memo(({ style }: { style?: any }) => {
+    const { duration } = useWorkoutTimer();
     return (
-        <View style={styles.exercisesContainer}>
-            {exercises.map((ex, index) => {
-                // Detecta superset usando o campo supersetWith
-                const prevEx = exercises[index - 1];
-                const nextEx = exercises[index + 1];
+        <Text style={style}>
+            {formatTime(duration)}
+        </Text>
+    );
+});
 
-                // Está em superset se tem link com exercício anterior ou próximo
-                const linkedWithPrev = prevEx && ex.supersetWith === prevEx.localId;
-                const linkedWithNext = nextEx && ex.supersetWith === nextEx.localId;
-                const isSuperset = linkedWithPrev || linkedWithNext;
+// Timer do conteúdo (meta info) - re-renderiza independentemente a cada segundo
+const ContentDurationTimer = memo(({ prefix, style }: { prefix?: string; style?: any }) => {
+    const { duration } = useWorkoutTimer();
+    return (
+        <Text style={style}>
+            {prefix}{formatTime(duration)}
+        </Text>
+    );
+});
 
-                let supersetPosition: 'first' | 'last' | 'middle' | undefined;
-                if (isSuperset) {
-                    if (!linkedWithPrev && linkedWithNext) supersetPosition = 'first';
-                    else if (linkedWithPrev && !linkedWithNext) supersetPosition = 'last';
-                    else if (linkedWithPrev && linkedWithNext) supersetPosition = 'middle';
-                    else supersetPosition = 'first';
-                }
+// ========== STICKY DURATION TIMER (aparece no header ao scrollar pra baixo) ==========
+// Mostra o tempo de treino no centro do header sticky com opacidade baseada no scroll.
+// Auto-contido: usa useWorkoutTimer() internamente, sem causar re-render no parent.
+const StickyDurationTimer = memo(({
+    scrollY,
+    color,
+}: {
+    scrollY: { value: number };
+    color: string;
+}) => {
+    const { duration } = useWorkoutTimer();
 
-                // Pode criar superset se tem próximo exercício e não está já em superset com o anterior
-                const canToggleSuperset = nextEx !== undefined;
+    const opacityStyle = useAnimatedStyle(() => ({
+        opacity: interpolate(scrollY.value, [0, 80], [0, 1], Extrapolation.CLAMP),
+    }));
 
-                return (
-                    <ExerciseCard
-                        key={ex.id}
-                        exerciseId={ex.id}
-                        name={ex.name}
-                        sets={ex.sets}
-                        onAddSet={onAddSet}
-                        onUpdateSet={onUpdateSet}
-                        onToggleSet={onToggleSet}
-                        onChangeSetType={onChangeSetType}
-                        onFillFromPR={onFillFromPR}
-                        onReplaceExercise={onReplaceExercise}
-                        onRemoveSet={onRemoveSet}
-                        onToggleSuperset={canToggleSuperset ? onToggleSuperset : undefined}
-                        onRemoveExercise={onRemoveExercise}
-                        isSuperset={isSuperset}
-                        supersetPosition={supersetPosition}
-                        isSupersetLinkedWithNext={linkedWithNext}
-                    />
-                );
-            })}
+    return (
+        <Animated.View style={[styles.headerTimerAbsolute, opacityStyle]}>
+            <Text style={[styles.headerTimerText, { color }]}>
+                {formatTime(duration)}
+            </Text>
+        </Animated.View>
+    );
+});
+
+// ========== HEADER DO WORKOUT (meta info) ==========
+const WorkoutHeader = memo(({
+    theme,
+    workoutName,
+    dateText,
+    startTimeText,
+    workoutMenuOptions,
+}: {
+    theme: any;
+    workoutName: string;
+    dateText: string;
+    startTimeText: string;
+    workoutMenuOptions: any[];
+}) => (
+    <View>
+        {/* Título + Menu */}
+        <View style={[styles.titleRow, styles.contentPadding]}>
+            <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>{workoutName}</Text>
+            <View style={styles.titleMenuButton}>
+                <ActionDropdown
+                    options={workoutMenuOptions}
+                    iconSize={22}
+                    iconColor={theme.textSecondary}
+                    anchor="right"
+                />
+            </View>
         </View>
-    );
-});
 
-// ========== WORKOUT CONTENT (usa KeyboardContext) ==========
+        {/* Meta info */}
+        <View style={[styles.metaRow, styles.contentPadding]}>
+            <CalendarBlank size={16} color={theme.textSecondary} />
+            <Text style={[styles.metaText, { color: theme.textSecondary }]}>{dateText}</Text>
+        </View>
+        <View style={[styles.metaRow, styles.contentPadding]}>
+            <Play size={16} color={theme.textSecondary} weight="fill" />
+            <Text style={[styles.metaText, { color: theme.textSecondary }]}>Início: {startTimeText}</Text>
+        </View>
+        <View style={[styles.metaRow, styles.contentPadding]}>
+            <Clock size={16} color={theme.textSecondary} />
+            <ContentDurationTimer prefix="Duração: " style={[styles.metaText, { color: theme.textSecondary }]} />
+        </View>
+    </View>
+));
+
+// ========== FOOTER DO WORKOUT (botões de ação) ==========
+const WorkoutFooter = memo(({
+    theme,
+    onAddExercise,
+    onCancel,
+}: {
+    theme: any;
+    onAddExercise: () => void;
+    onCancel: () => void;
+}) => (
+    <View style={styles.contentPadding}>
+        <TouchableOpacity
+            onPress={onAddExercise}
+            style={[styles.addExerciseButton, { backgroundColor: theme.primary + '20' }]}
+        >
+            <Text style={[styles.addExerciseText, { color: theme.primary }]}>+ Adicionar Exercício</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={onCancel} style={styles.cancelButton}>
+            <Text style={styles.cancelText}>Cancelar Treino</Text>
+        </TouchableOpacity>
+    </View>
+));
+
+// ========== TIPO PARA EXERCÍCIOS COM INFO DE SUPERSET ==========
+interface ExerciseWithSupersetInfo {
+    id: string;
+    localId: number;
+    name: string;
+    sets: any[];
+    notes?: string;
+    supersetWith?: number;
+    // Info pré-calculada de superset
+    _source: any; // Referência original do exercício para cache comparison
+    _isSuperset: boolean;
+    _supersetPosition?: 'first' | 'last' | 'middle';
+    _linkedWithNext: boolean;
+    _canToggleSuperset: boolean;
+}
+
+// ========== WORKOUT CONTENT COM FLATLIST (usa KeyboardContext) ==========
 const WorkoutContent = memo(({
     theme,
     insets,
-    isScrolled,
-    duration,
     workoutName,
     startedAt,
     exercises,
     isActive,
-    handleScroll,
     handleAddSet,
     handleUpdateSet,
     handleToggleSet,
     handleChangeSetType,
     handleFillFromPR,
-    handleReplaceExercise,
     handleRemoveSet,
     handleToggleSuperset,
     handleRemoveExercise,
     handleAddExercise,
     handleCancel,
+    handleShowExercisePicker,
+    handleOpenExerciseDetail,
     workoutMenuOptions,
+    scrollY,
 }: any) => {
-    const { isVisible: isKeyboardVisible } = useKeyboard();
+    const { isVisible: isKeyboardVisible, setScrollRef } = useKeyboard();
+    const flatListRef = useRef<any>(null);
+
+    // Registra ref do FlatList para auto-scroll
+    const setFlatListRef = useCallback((ref: any) => {
+        flatListRef.current = ref;
+        if (ref) {
+            const wrapper = {
+                _ref: ref,
+                _currentOffset: 0,
+                scrollToOffset(opts: { offset: number; animated?: boolean }) {
+                    ref.scrollToOffset?.(opts);
+                },
+            };
+            scrollWrapperRef.current = wrapper;
+            setScrollRef(wrapper);
+        } else {
+            scrollWrapperRef.current = null;
+            setScrollRef(null);
+        }
+    }, [setScrollRef]);
 
     const dateText = useMemo(() => formatDate(), []);
     const startTimeText = useMemo(() => formatStartTime(startedAt), [startedAt]);
-    const durationText = useMemo(() => formatTime(duration), [duration]);
+    const paddingBottom = isKeyboardVisible ? KEYBOARD_HEIGHT + insets.bottom + 20 : 60;
 
-    return (
-        <WorkoutScrollContent
-            onScroll={handleScroll}
-            isKeyboardVisible={isKeyboardVisible}
-            bottomInset={insets.bottom}
-        >
-            {/* Título + Menu */}
-            <View style={[styles.titleRow, styles.contentPadding]}>
-                <Text style={[styles.title, { color: theme.text }]}>{workoutName}</Text>
-                <View style={[styles.menuButton, { backgroundColor: theme.primary }]}>
-                    <OptionsDropdown options={workoutMenuOptions} iconSize={20} iconColor="#fff" />
-                </View>
-            </View>
+    // Scroll handler para rastrear posição (usado para opacidade do countdown no header + auto-scroll)
+    const scrollWrapperRef = useRef<any>(null);
+    const handleScroll = useCallback((event: any) => {
+        const y = event.nativeEvent.contentOffset.y;
+        scrollY.value = y;
+        // Atualiza offset no wrapper para auto-scroll calcular posição correta
+        if (scrollWrapperRef.current) scrollWrapperRef.current._currentOffset = y;
+    }, [scrollY]);
 
-            {/* Meta info */}
-            <View style={[styles.metaRow, styles.contentPadding]}>
-                <CalendarBlank size={16} color={theme.textSecondary} />
-                <Text style={[styles.metaText, { color: theme.textSecondary }]}>{dateText}</Text>
-            </View>
-            <View style={[styles.metaRow, styles.contentPadding]}>
-                <Play size={16} color={theme.textSecondary} weight="fill" />
-                <Text style={[styles.metaText, { color: theme.textSecondary }]}>Início: {startTimeText}</Text>
-            </View>
-            <View style={[styles.metaRow, styles.contentPadding]}>
-                <Clock size={16} color={theme.textSecondary} />
-                <Text style={[styles.metaText, { color: theme.textSecondary }]}>Duração: {durationText}</Text>
-            </View>
+    // Cache ref para evitar recriar objetos de exercícios que não mudaram
+    const supersetCacheRef = useRef<Map<string, ExerciseWithSupersetInfo>>(new Map());
 
-            {/* Exercícios */}
-            <ExerciseList
-                exercises={exercises}
-                isActive={isActive}
+    // PRÉ-CALCULA info de superset com CACHE por exercício
+    // Quando apenas 1 set muda, só o exercício correspondente gera novo objeto.
+    // Os demais mantém a mesma referência = FlatList NEM RODA o comparator do memo.
+    const exercisesWithSupersetInfo = useMemo((): ExerciseWithSupersetInfo[] => {
+        const newCache = new Map<string, ExerciseWithSupersetInfo>();
+
+        const result = exercises.map((ex: any, index: number) => {
+            const prevEx = exercises[index - 1];
+            const nextEx = exercises[index + 1];
+
+            // Está em superset se tem link com exercício anterior ou próximo
+            const linkedWithPrev = prevEx && ex.supersetWith === prevEx.localId;
+            const linkedWithNext = nextEx && ex.supersetWith === nextEx.localId;
+            const isSuperset = linkedWithPrev || linkedWithNext;
+
+            let supersetPosition: 'first' | 'last' | 'middle' | undefined;
+            if (isSuperset) {
+                if (!linkedWithPrev && linkedWithNext) supersetPosition = 'first';
+                else if (linkedWithPrev && !linkedWithNext) supersetPosition = 'last';
+                else if (linkedWithPrev && linkedWithNext) supersetPosition = 'middle';
+                else supersetPosition = 'first';
+            }
+
+            const canToggleSuperset = nextEx !== undefined;
+
+            // Verifica cache: se o exercício source E as propriedades de superset são iguais, reutiliza
+            const cached = supersetCacheRef.current.get(ex.id);
+            if (
+                cached &&
+                cached._source === ex &&
+                cached._isSuperset === isSuperset &&
+                cached._supersetPosition === supersetPosition &&
+                cached._linkedWithNext === linkedWithNext &&
+                cached._canToggleSuperset === canToggleSuperset
+            ) {
+                newCache.set(ex.id, cached);
+                return cached;
+            }
+
+            const newItem: ExerciseWithSupersetInfo = {
+                ...ex,
+                _source: ex, // Referência original para comparação no cache
+                _isSuperset: isSuperset,
+                _supersetPosition: supersetPosition,
+                _linkedWithNext: linkedWithNext,
+                _canToggleSuperset: canToggleSuperset,
+            };
+            newCache.set(ex.id, newItem);
+            return newItem;
+        });
+
+        supersetCacheRef.current = newCache;
+        return result;
+    }, [exercises]);
+
+    // Render item para FlatList - NÃO depende mais de exercises!
+    const renderExerciseItem = useCallback(({ item }: { item: ExerciseWithSupersetInfo }) => {
+        return (
+            <ExerciseCard
+                exerciseId={item.id}
+                name={item.name}
+                sets={item.sets}
                 onAddSet={handleAddSet}
                 onUpdateSet={handleUpdateSet}
                 onToggleSet={handleToggleSet}
                 onChangeSetType={handleChangeSetType}
                 onFillFromPR={handleFillFromPR}
-                onReplaceExercise={handleReplaceExercise}
+                onShowExercisePicker={handleShowExercisePicker}
+                onOpenExerciseDetail={handleOpenExerciseDetail}
                 onRemoveSet={handleRemoveSet}
-                onToggleSuperset={handleToggleSuperset}
+                onToggleSuperset={item._canToggleSuperset ? handleToggleSuperset : undefined}
                 onRemoveExercise={handleRemoveExercise}
+                notes={item.notes}
+                isSuperset={item._isSuperset}
+                supersetPosition={item._supersetPosition}
+                isSupersetLinkedWithNext={item._linkedWithNext}
             />
+        );
+    }, [handleAddSet, handleUpdateSet, handleToggleSet, handleChangeSetType, handleFillFromPR, handleShowExercisePicker, handleOpenExerciseDetail, handleRemoveSet, handleToggleSuperset, handleRemoveExercise]);
 
-            {/* Botões de ação */}
-            <View style={styles.contentPadding}>
-                <TouchableOpacity
-                    onPress={handleAddExercise}
-                    style={[styles.addExerciseButton, { backgroundColor: theme.primary + '20' }]}
-                >
-                    <Text style={[styles.addExerciseText, { color: theme.primary }]}>+ Adicionar Exercício</Text>
-                </TouchableOpacity>
+    // Key extractor
+    const keyExtractor = useCallback((item: any) => item.id, []);
 
-                <TouchableOpacity onPress={handleCancel} style={styles.cancelButton}>
-                    <Text style={styles.cancelText}>Cancelar Treino</Text>
-                </TouchableOpacity>
-            </View>
-        </WorkoutScrollContent>
+    // Header component
+    const ListHeader = useMemo(() => (
+        <WorkoutHeader
+            theme={theme}
+            workoutName={workoutName}
+            dateText={dateText}
+            startTimeText={startTimeText}
+            workoutMenuOptions={workoutMenuOptions}
+        />
+    ), [theme, workoutName, dateText, startTimeText, workoutMenuOptions]);
+
+    // Footer component
+    const ListFooter = useMemo(() => (
+        <WorkoutFooter
+            theme={theme}
+            onAddExercise={handleAddExercise}
+            onCancel={handleCancel}
+        />
+    ), [theme, handleAddExercise, handleCancel]);
+
+    return (
+        <BottomSheetFlatList
+            ref={setFlatListRef}
+            data={exercisesWithSupersetInfo}
+            renderItem={renderExerciseItem}
+            keyExtractor={keyExtractor}
+            ListHeaderComponent={ListHeader}
+            ListFooterComponent={ListFooter}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom }]}
+            bounces={true}
+            keyboardShouldPersistTaps="always"
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            // Otimizações de performance - ajustadas para melhor FPS
+            removeClippedSubviews={true}
+            maxToRenderPerBatch={5}
+            windowSize={11}
+            initialNumToRender={5}
+            updateCellsBatchingPeriod={50}
+        />
     );
 });
 
@@ -245,13 +392,12 @@ export const WorkoutBottomSheet = () => {
     const bottomSheetRef = useRef<BottomSheet>(null);
     const { animatedIndex, animatedPosition } = useSheetAnimation();
 
+    // Separate context hooks for optimal re-renders
+    // NOTA: Os timers são isolados em HeaderTimer, MiniPlayerTimer e ContentDurationTimer
+    // NÃO usar useWorkoutTimer() aqui — causa re-render 1x/segundo e lag no Perfil
+    const { isActive, isMinimized, workoutName } = useWorkoutMeta(); // Meta only - no re-render on set updates
+    const { exercises } = useWorkoutExercises(); // Exercises only - isolated re-renders
     const {
-        isActive,
-        isMinimized,
-        workoutName,
-        duration,
-        startedAt,
-        exercises,
         minimizeWorkout,
         maximizeWorkout,
         finishWorkout,
@@ -266,55 +412,139 @@ export const WorkoutBottomSheet = () => {
         removeExercise,
         removeSet,
         toggleSuperset,
-    } = useWorkout();
+        getStartedAt,
+        updateWorkoutName,
+    } = useWorkoutActions(); // Stable functions (never re-render)
+
+    // Captura startedAt uma vez quando treino inicia (sem subscription ao timer)
+    const startedAtRef = useRef<number | null>(null);
+    useEffect(() => {
+        if (isActive) {
+            startedAtRef.current = getStartedAt();
+        } else {
+            startedAtRef.current = null;
+        }
+    }, [isActive, getStartedAt]);
+
+    // Controla montagem do WorkoutContent sob demanda:
+    // - Desmontado quando minimizado (zero custo JS → Perfil a 60fps)
+    // - Montado via onAnimate ANTES da animação de abertura (sem flash cinza)
+    // - Desmontado via onChange DEPOIS da animação de fechamento
+    const [contentReady, setContentReady] = useState(!isMinimized);
 
     const [showAddExercise, setShowAddExercise] = useState(false);
     const [showFinishModal, setShowFinishModal] = useState(false);
-    const [isScrolled, setIsScrolled] = useState(false);
-    const [showRestTimer, setShowRestTimer] = useState(false);
-    const [restTimerSeconds, setRestTimerSeconds] = useState(90);
+    // ExercisePickerModal: uma única instância gerenciada aqui (em vez de N instâncias dentro de cada ExerciseCard)
+    const [exercisePickerForId, setExercisePickerForId] = useState<string | null>(null);
+    // ExerciseDetailModal: id do exercício cujos detalhes estão sendo visualizados
+    const [exerciseDetailForId, setExerciseDetailForId] = useState<string | null>(null);
+    // Modal "Acabou o descanso!"
+    const [showRestFinished, setShowRestFinished] = useState(false);
+    // Modal de cancelar treino
+    const [showCancelModal, setShowCancelModal] = useState(false);
     const haptics = useHapticPatterns();
+
+    // Rest timer
+    const restTimer = useRestTimer();
+    const scrollY = useSharedValue(0);
+
+    // Limpa o rest timer quando o treino finaliza/cancela
+    // Evita o botão ficar azul ou no meio de uma contagem ao reabrir
+    useEffect(() => {
+        if (!isActive) {
+            restTimer.resetTimer();
+        }
+    }, [isActive, restTimer.resetTimer]);
+
+    const timerButtonRef = useRef<View>(null);
+    const [timerButtonPos, setTimerButtonPos] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+
+    const handleTimerButtonPress = useCallback(() => {
+        timerButtonRef.current?.measureInWindow((x, y, width, height) => {
+            setTimerButtonPos({ x, y, width, height });
+            restTimer.showPicker();
+        });
+    }, [restTimer.showPicker]);
+
+    const handleTimerPickerSelect = useCallback((seconds: number) => {
+        restTimer.setRestDuration(seconds);
+        restTimer.startTimer();
+    }, [restTimer.setRestDuration, restTimer.startTimer]);
+
+    // Quando o timer de descanso termina: mostra modal "Acabou o descanso!"
+    const handleRestTimerFinish = useCallback(() => {
+        restTimer.onTimerFinish();
+        setShowRestFinished(true);
+    }, [restTimer.onTimerFinish]);
 
     // ========== CALLBACKS MEMOIZADOS ==========
     const handleToggleSet = useCallback((exerciseId: string, setId: string) => {
-        // Encontra o exercício e set atual para verificar se está completando
-        const exercise = exercises.find(ex => ex.id === exerciseId);
+        // Verifica se o set está sendo completado (não descompletado)
+        const exercise = exercises.find((ex: any) => ex.id === exerciseId);
         const set = exercise?.sets.find((s: any) => s.id === setId);
         const isCompleting = set && !set.completed;
 
-        // Haptic agora é controlado pelo SetRow para sincronizar com a animação
         toggleSet(exerciseId, setId);
 
-        // Se está completando (não descompleting), inicia timer de descanso
+        // Auto-trigger rest timer quando completa um set
         if (isCompleting) {
-            // Delay para a animação do check terminar
             setTimeout(() => {
-                setRestTimerSeconds(90); // 90s padrão, pode vir do template depois
-                setShowRestTimer(true);
-            }, 500);
+                restTimer.startTimer();
+            }, 700); // delay para a animação do SetRow terminar
         }
-    }, [toggleSet, exercises]);
+    }, [toggleSet, exercises, restTimer]);
 
-    const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-        'worklet';
-        const scrollY = event.nativeEvent.contentOffset.y;
-        const shouldBeScrolled = scrollY > 10;
-        if (shouldBeScrolled !== isScrolled) {
-            // Batch state update para evitar re-renders excessivos
-            requestAnimationFrame(() => setIsScrolled(shouldBeScrolled));
+    // ExercisePickerModal: abre o picker para um exercício específico
+    const handleShowExercisePicker = useCallback((exerciseId: string) => {
+        setExercisePickerForId(exerciseId);
+    }, []);
+
+    const handleCloseExercisePicker = useCallback(() => {
+        setExercisePickerForId(null);
+    }, []);
+
+    const handlePickerSelectExercise = useCallback((newName: string) => {
+        if (exercisePickerForId) {
+            replaceExercise(exercisePickerForId, newName);
         }
-    }, [isScrolled]);
+        setExercisePickerForId(null);
+    }, [exercisePickerForId, replaceExercise]);
+
+    // Nome do exercício atual para o picker
+    const pickerCurrentExerciseName = useMemo(() => {
+        if (!exercisePickerForId) return '';
+        const ex = exercises.find((e: any) => e.id === exercisePickerForId);
+        return ex?.name || '';
+    }, [exercisePickerForId, exercises]);
+
+    // ExerciseDetailModal
+    const handleOpenExerciseDetail = useCallback((exerciseId: string) => {
+        setExerciseDetailForId(exerciseId);
+    }, []);
+
+    const handleCloseExerciseDetail = useCallback(() => {
+        setExerciseDetailForId(null);
+    }, []);
+
+    const exerciseDetailName = useMemo(() => {
+        if (!exerciseDetailForId) return '';
+        const ex = exercises.find((e: any) => e.id === exerciseDetailForId);
+        return ex?.name || '';
+    }, [exerciseDetailForId, exercises]);
 
     const handleAddExercise = useCallback(() => {
         setShowAddExercise(true);
     }, []);
 
     const handleCancel = useCallback(() => {
-        Alert.alert('Cancelar Treino', 'Tem certeza que deseja cancelar?', [
-            { text: 'Não', style: 'cancel' },
-            { text: 'Sim', style: 'destructive', onPress: cancelWorkout }
-        ]);
-    }, [cancelWorkout]);
+        setShowCancelModal(true);
+    }, []);
+
+    const handleConfirmCancel = useCallback(() => {
+        setShowCancelModal(false);
+        haptics.finishWorkout();
+        cancelWorkout();
+    }, [haptics, cancelWorkout]);
 
     const handleFinish = useCallback(() => {
         setShowFinishModal(true);
@@ -359,10 +589,16 @@ export const WorkoutBottomSheet = () => {
 
     // Exporta JSON
     const exportWorkoutJson = useCallback(async () => {
+        // Calcula duração no momento do export usando getStartedAt()
+        const currentStartedAt = getStartedAt();
+        const currentDuration = currentStartedAt
+            ? Math.floor((Date.now() - currentStartedAt) / 1000)
+            : 0;
+
         const exportData = {
             nome: workoutName,
             data: new Date().toISOString().split('T')[0],
-            duracao: formatTime(duration),
+            duracao: formatTime(currentDuration),
             exercicios: exercises.map(ex => ({
                 nome: ex.name,
                 series: ex.sets
@@ -386,29 +622,92 @@ export const WorkoutBottomSheet = () => {
             'JSON do treino atual copiado para a área de transferência.',
             [{ text: 'OK' }]
         );
-    }, [workoutName, duration, exercises]);
+    }, [workoutName, getStartedAt, exercises]);
+
+    // Estado para o modal de renomear treino
+    const [showRenameModal, setShowRenameModal] = useState(false);
+    const [renameText, setRenameText] = useState('');
+
+    const handleEditWorkoutName = useCallback(() => {
+        setRenameText(workoutName);
+        setShowRenameModal(true);
+    }, [workoutName]);
+
+    const handleConfirmRename = useCallback(() => {
+        if (renameText.trim()) {
+            updateWorkoutName(renameText.trim());
+        }
+        setShowRenameModal(false);
+    }, [renameText, updateWorkoutName]);
 
     const workoutMenuOptions = useMemo(() => [
+        {
+            id: 'edit-name',
+            label: 'Editar nome',
+            icon: 'edit' as const,
+            onPress: handleEditWorkoutName,
+        },
+        {
+            id: 'adjust-time',
+            label: 'Ajustar horário',
+            icon: 'settings' as const,
+            onPress: () => {
+                Alert.alert('Em breve', 'Ajuste de horário será implementado em breve!');
+            },
+        },
+        {
+            id: 'add-note',
+            label: 'Adicionar nota',
+            icon: 'note' as const,
+            onPress: () => {
+                Alert.alert('Em breve', 'Notas de treino serão implementadas em breve!');
+            },
+        },
         {
             id: 'export',
             label: 'Exportar JSON',
             icon: 'export' as const,
             onPress: exportWorkoutJson,
         },
-    ], [exportWorkoutJson]);
+    ], [handleEditWorkoutName, exportWorkoutJson]);
 
     // ========== EFFECTS ==========
+    // Reage a isActive E isMinimized para controlar o sheet corretamente
     useEffect(() => {
-        if (isActive) {
-            bottomSheetRef.current?.snapToIndex(1);
-        } else {
+        if (!isActive) {
             bottomSheetRef.current?.close();
+        } else if (isMinimized) {
+            // Quando minimizado, vai para o snap point 0 (mini player)
+            // Isso mantém o sheet visível mas pequeno, permitindo a animação do MiniPlayer funcionar
+            bottomSheetRef.current?.snapToIndex(0);
+        } else {
+            // Quando não minimizado (isActive=true, isMinimized=false), abre expandido
+            bottomSheetRef.current?.snapToIndex(1);
         }
-    }, [isActive]);
+    }, [isActive, isMinimized]);
 
+    // Detecta qualquer movimento do sheet (drag ou programático) para montar conteúdo
+    // Dispara na UI thread via animatedPosition — funciona pra tap E drag
+    const mountContent = useCallback(() => {
+        setContentReady(true);
+    }, []);
+
+    useAnimatedReaction(
+        () => animatedPosition.value,
+        (pos, prevPos) => {
+            // Se o sheet começou a se mover pra cima a partir da posição minimizada
+            if (prevPos !== null && pos < prevPos && prevPos >= minimizedPosition - 5) {
+                runOnJS(mountContent)();
+            }
+        },
+        [minimizedPosition]
+    );
+
+    // Dispara DEPOIS da animação terminar — desmonta quando já está invisível
     const handleSheetChanges = useCallback((index: number) => {
         if (index === 0) {
             minimizeWorkout();
+            setContentReady(false);
         } else if (index === 1) {
             maximizeWorkout();
         }
@@ -439,38 +738,49 @@ export const WorkoutBottomSheet = () => {
         );
         return {
             opacity,
+            pointerEvents: opacity > 0.1 ? 'auto' : 'none',
         };
     });
 
+    // ========== STICKY DURATION TIMER — tempo de treino no header ao scrollar ==========
+    const stickyDurationElement = useMemo(() => (
+        <StickyDurationTimer scrollY={scrollY} color={theme.primary} />
+    ), [scrollY, theme.primary]);
+
+    // ========== REST TIMER — renderizado no handle sem causar re-mount ==========
+    // O RestTimerButton é pesado (tem intervalRef, state, animações).
+    // Pra evitar que re-criação do renderHandle cause re-mount, renderizamos
+    // ele FORA do useCallback e o referenciamos via ref.
+    const restTimerButtonElement = useMemo(() => (
+        <RestTimerButton
+            isActive={restTimer.isTimerVisible}
+            initialSeconds={restTimer.restDuration}
+            onFinish={handleRestTimerFinish}
+            onDismiss={restTimer.dismissTimer}
+            onPress={handleTimerButtonPress}
+            primaryColor={theme.primary}
+            fieldColor={theme.field}
+            textColor={theme.text}
+        />
+    ), [restTimer.isTimerVisible, restTimer.restDuration, handleRestTimerFinish, restTimer.dismissTimer, handleTimerButtonPress, theme.primary, theme.field, theme.text]);
+
     // ========== RENDER HANDLE ==========
+    // NOTA: Não inclui 'duration' nas deps! Os componentes HeaderTimer e MiniPlayerTimer
+    // se subscrevem independentemente ao timer, evitando re-render do handle inteiro.
     const renderHandle = useCallback(() => (
         <View style={[styles.handleContainer, { backgroundColor: theme.surface }]}>
             <View style={[styles.handleIndicator, { backgroundColor: theme.textSecondary }]} />
 
             {/* Header expandido */}
             <Animated.View style={expandedStyle}>
-                <View style={[
-                    styles.stickyHeader,
-                    {
-                        borderBottomColor: isScrolled ? theme.textSecondary + '40' : 'transparent',
-                        borderBottomWidth: StyleSheet.hairlineWidth,
-                    }
-                ]}>
+                <View style={styles.stickyHeader}>
                     <View style={styles.headerRow}>
-                        <TouchableOpacity
-                            onPress={() => bottomSheetRef.current?.snapToIndex(0)}
-                            style={[styles.timerButton, { backgroundColor: theme.field }]}
-                        >
-                            <Timer size={20} color={theme.text} />
-                        </TouchableOpacity>
+                        <View ref={timerButtonRef} collapsable={false}>
+                            {restTimerButtonElement}
+                        </View>
 
-                        {isScrolled && (
-                            <View style={styles.headerTimerAbsolute}>
-                                <Text style={[styles.headerTimerText, { color: theme.primary }]}>
-                                    {formatTime(duration)}
-                                </Text>
-                            </View>
-                        )}
+                        {/* Tempo de treino no centro — aparece ao scrollar pra baixo */}
+                        {stickyDurationElement}
 
                         <TouchableOpacity onPress={handleFinish} style={styles.finishButton}>
                             <Text style={styles.finishText}>Terminar</Text>
@@ -487,11 +797,11 @@ export const WorkoutBottomSheet = () => {
                     activeOpacity={0.7}
                 >
                     <Text style={[styles.miniTitle, { color: theme.text }]}>{workoutName}</Text>
-                    <Text style={[styles.miniTimer, { color: theme.primary }]}>{formatTime(duration)}</Text>
+                    <MiniPlayerTimer style={[styles.miniTimer, { color: theme.primary }]} />
                 </TouchableOpacity>
             </Animated.View>
         </View>
-    ), [theme, isScrolled, duration, expandedStyle, miniPlayerStyle, workoutName, handleFinish]);
+    ), [theme, expandedStyle, miniPlayerStyle, workoutName, handleFinish, restTimerButtonElement, stickyDurationElement]);
 
     // ========== RENDER ==========
     return (
@@ -510,32 +820,33 @@ export const WorkoutBottomSheet = () => {
                     enablePanDownToClose={false}
                     enableDynamicSizing={false}
                     overDragResistanceFactor={10}
-                    enableContentPanningGesture={false}
+                    enableContentPanningGesture={true}
                 >
                     <Animated.View style={[styles.expandedContainer, expandedStyle]}>
-                        <WorkoutContent
-                            theme={theme}
-                            insets={insets}
-                            isScrolled={isScrolled}
-                            duration={duration}
-                            workoutName={workoutName}
-                            startedAt={startedAt}
-                            exercises={exercises}
-                            isActive={isActive}
-                            handleScroll={handleScroll}
-                            handleAddSet={addSet}
-                            handleUpdateSet={updateSet}
-                            handleToggleSet={handleToggleSet}
-                            handleChangeSetType={changeSetType}
-                            handleFillFromPR={fillFromPR}
-                            handleReplaceExercise={replaceExercise}
-                            handleRemoveSet={removeSet}
-                            handleToggleSuperset={handleToggleSuperset}
-                            handleRemoveExercise={removeExercise}
-                            handleAddExercise={handleAddExercise}
-                            handleCancel={handleCancel}
-                            workoutMenuOptions={workoutMenuOptions}
-                        />
+                        {contentReady && (
+                            <WorkoutContent
+                                theme={theme}
+                                insets={insets}
+                                workoutName={workoutName}
+                                startedAt={startedAtRef.current}
+                                exercises={exercises}
+                                isActive={isActive}
+                                handleAddSet={addSet}
+                                handleUpdateSet={updateSet}
+                                handleToggleSet={handleToggleSet}
+                                handleChangeSetType={changeSetType}
+                                handleFillFromPR={fillFromPR}
+                                handleRemoveSet={removeSet}
+                                handleToggleSuperset={handleToggleSuperset}
+                                handleRemoveExercise={removeExercise}
+                                handleAddExercise={handleAddExercise}
+                                handleCancel={handleCancel}
+                                handleShowExercisePicker={handleShowExercisePicker}
+                                handleOpenExerciseDetail={handleOpenExerciseDetail}
+                                workoutMenuOptions={workoutMenuOptions}
+                                scrollY={scrollY}
+                            />
+                        )}
                     </Animated.View>
 
                     <AddExerciseModal
@@ -553,16 +864,89 @@ export const WorkoutBottomSheet = () => {
                         onCancel={() => setShowFinishModal(false)}
                         onDiscardWorkout={handleDiscardWorkout}
                     />
+
+                    {/* Uma única instância do picker (em vez de N dentro de cada ExerciseCard) */}
+                    <ExercisePickerModal
+                        visible={exercisePickerForId !== null}
+                        onClose={handleCloseExercisePicker}
+                        onSelect={handlePickerSelectExercise}
+                        currentExerciseName={pickerCurrentExerciseName}
+                    />
                 </BottomSheet>
 
                 <CustomKeyboard />
 
-                {/* Rest Timer */}
-                <RestTimer
-                    visible={showRestTimer}
-                    initialSeconds={restTimerSeconds}
-                    onClose={() => setShowRestTimer(false)}
-                    onFinish={() => setShowRestTimer(false)}
+                {/* Exercise Detail Modal */}
+                <ExerciseDetailModal
+                    visible={exerciseDetailForId !== null}
+                    exerciseName={exerciseDetailName}
+                    onClose={handleCloseExerciseDetail}
+                />
+
+                {/* Modal de renomear treino */}
+                <Modal
+                    visible={showRenameModal}
+                    transparent
+                    animationType="fade"
+                    onRequestClose={() => setShowRenameModal(false)}
+                    statusBarTranslucent
+                >
+                    <Pressable
+                        style={styles.renameBackdrop}
+                        onPress={() => setShowRenameModal(false)}
+                    >
+                        <Pressable style={[styles.renameContainer, { backgroundColor: theme.surface }]}>
+                            <Text style={[styles.renameTitle, { color: theme.text }]}>Editar Nome</Text>
+                            <TextInput
+                                style={[styles.renameInput, { color: theme.text, backgroundColor: theme.field, borderColor: theme.primary }]}
+                                value={renameText}
+                                onChangeText={setRenameText}
+                                autoFocus
+                                selectTextOnFocus
+                                maxLength={50}
+                                placeholderTextColor={theme.textSecondary}
+                                placeholder="Nome do treino"
+                                onSubmitEditing={handleConfirmRename}
+                                returnKeyType="done"
+                            />
+                            <View style={styles.renameButtons}>
+                                <TouchableOpacity
+                                    onPress={() => setShowRenameModal(false)}
+                                    style={styles.renameCancelBtn}
+                                >
+                                    <Text style={[styles.renameCancelText, { color: theme.textSecondary }]}>Cancelar</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    onPress={handleConfirmRename}
+                                    style={[styles.renameSaveBtn, { backgroundColor: theme.primary }]}
+                                >
+                                    <Text style={styles.renameSaveText}>Salvar</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </Pressable>
+                    </Pressable>
+                </Modal>
+
+                {/* Rest Timer Picker */}
+                <RestTimerPicker
+                    visible={restTimer.isPickerVisible}
+                    currentDuration={restTimer.restDuration}
+                    onSelect={handleTimerPickerSelect}
+                    onClose={restTimer.closePicker}
+                    anchorPosition={timerButtonPos ?? undefined}
+                />
+
+                {/* Modal "Acabou o descanso!" */}
+                <RestFinishedModal
+                    visible={showRestFinished}
+                    onDismiss={() => setShowRestFinished(false)}
+                />
+
+                {/* Modal de cancelar treino */}
+                <CancelWorkoutModal
+                    visible={showCancelModal}
+                    onCancel={handleConfirmCancel}
+                    onDismiss={() => setShowCancelModal(false)}
                 />
             </View>
         </KeyboardProvider>
@@ -637,13 +1021,6 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: 'bold',
     },
-    timerButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 8,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
     finishButton: {
         backgroundColor: '#22c55e',
         paddingHorizontal: 24,
@@ -672,13 +1049,9 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         flex: 1,
     },
-    menuButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 8,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginLeft: 12,
+    titleMenuButton: {
+        marginLeft: 8,
+        padding: 4,
     },
     metaRow: {
         flexDirection: 'row',
@@ -688,9 +1061,6 @@ const styles = StyleSheet.create({
     metaText: {
         fontSize: 14,
         marginLeft: 8,
-    },
-    exercisesContainer: {
-        marginTop: 20,
     },
     addExerciseButton: {
         paddingVertical: 14,
@@ -713,5 +1083,55 @@ const styles = StyleSheet.create({
         color: '#ef4444',
         fontWeight: 'bold',
         fontSize: 16,
+    },
+    // Rename modal
+    renameBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 32,
+    },
+    renameContainer: {
+        width: '100%',
+        borderRadius: 16,
+        padding: 20,
+    },
+    renameTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginBottom: 16,
+    },
+    renameInput: {
+        fontSize: 16,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        borderRadius: 10,
+        borderWidth: 1.5,
+        marginBottom: 20,
+    },
+    renameButtons: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: 12,
+    },
+    renameCancelBtn: {
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 8,
+    },
+    renameCancelText: {
+        fontSize: 15,
+        fontWeight: '600',
+    },
+    renameSaveBtn: {
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 8,
+    },
+    renameSaveText: {
+        color: '#fff',
+        fontSize: 15,
+        fontWeight: 'bold',
     },
 });

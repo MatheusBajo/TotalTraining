@@ -1,5 +1,12 @@
 // API Client usando Supabase
-import { supabase } from '../lib/supabase';
+import { supabase, getCachedLastWorkout, setCachedLastWorkout, getCachedUserStats, setCachedUserStats, clearCache } from '../lib/supabase';
+import { getLastFinishedWorkoutLocal } from '../db/database';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const BEST_STREAK_KEY = 'totaltraining:bestStreak';
+
+// Re-export clearCache para uso externo
+export { clearCache } from '../lib/supabase';
 
 // ==================== TYPES ====================
 
@@ -118,6 +125,83 @@ export async function getAllWorkouts(): Promise<WorkoutRecord[]> {
 
     if (error) throw error;
     return data || [];
+}
+
+// Pega o último treino finalizado do usuário (LOCAL-FIRST)
+export async function getLastFinishedWorkout(): Promise<WorkoutRecord | null> {
+    const user = await getCurrentUser();
+    if (!user) return null;
+
+    try {
+        // 1. Tenta buscar LOCAL primeiro (instantâneo)
+        const localWorkout = await getLastFinishedWorkoutLocal(user.id);
+        if (localWorkout) {
+            return {
+                id: localWorkout.remote_id || localWorkout.id,
+                user_id: localWorkout.user_id,
+                date: localWorkout.date,
+                name: localWorkout.name,
+                template_id: localWorkout.template_id || undefined,
+                started_at: localWorkout.started_at || undefined,
+                finished_at: localWorkout.finished_at || undefined,
+                duration_seconds: localWorkout.duration_seconds || undefined,
+                notes: localWorkout.notes || undefined,
+                created_at: localWorkout.created_at,
+                updated_at: localWorkout.updated_at,
+            };
+        }
+
+        // 2. Se não tem local, tenta cache
+        const cached = await getCachedLastWorkout();
+        if (cached) {
+            refreshLastWorkoutCache();
+            return cached as unknown as WorkoutRecord;
+        }
+
+        // 3. Sem cache, busca do servidor
+        return fetchAndCacheLastWorkout();
+    } catch (error) {
+        console.log('[API] Local fetch failed, falling back to remote:', error);
+        // Fallback para comportamento antigo
+        const cached = await getCachedLastWorkout();
+        if (cached) {
+            return cached as unknown as WorkoutRecord;
+        }
+        return fetchAndCacheLastWorkout();
+    }
+}
+
+// Busca do servidor e atualiza cache
+async function fetchAndCacheLastWorkout(): Promise<WorkoutRecord | null> {
+    const user = await getCurrentUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+        .from('workouts')
+        .select('*')
+        .eq('user_id', user.id)
+        .not('finished_at', 'is', null)
+        .order('finished_at', { ascending: false })
+        .limit(1)
+        .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+
+    if (data) {
+        // Salva no cache
+        await setCachedLastWorkout({ id: data.id, name: data.name, finished_at: data.finished_at! });
+    }
+
+    return data || null;
+}
+
+// Atualiza cache em background
+async function refreshLastWorkoutCache(): Promise<void> {
+    try {
+        await fetchAndCacheLastWorkout();
+    } catch (error) {
+        console.log('[API] Background refresh failed:', error);
+    }
 }
 
 export async function getFullWorkout(workoutId: number): Promise<FullWorkout | null> {
@@ -529,7 +613,24 @@ export interface UserStats {
     }>;
 }
 
-export async function getUserStats(): Promise<UserStats> {
+export async function getUserStats(forceRefresh = false): Promise<UserStats> {
+    // Se forceRefresh, ignora o cache
+    if (!forceRefresh) {
+        // Tenta cache primeiro para resposta instantânea
+        const cached = await getCachedUserStats();
+        if (cached) {
+            // Retorna cache, atualiza em background
+            refreshUserStatsCache();
+            return cached as UserStats;
+        }
+    }
+
+    // Sem cache ou forceRefresh, busca do servidor
+    return fetchAndCacheUserStats();
+}
+
+// Busca stats do servidor e salva no cache
+async function fetchAndCacheUserStats(): Promise<UserStats> {
     const user = await getCurrentUser();
     if (!user) throw new Error('User not authenticated');
 
@@ -555,7 +656,7 @@ export async function getUserStats(): Promise<UserStats> {
     const minutes = totalMinutes % 60;
     const tempoFormatado = `${hours}h ${minutes}min`;
 
-    // Calcula streak
+    // Calcula streak (inteligente: fins de semana não quebram, 1 freeze em dias úteis)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayStr = today.toISOString().split('T')[0];
@@ -572,20 +673,54 @@ export async function getUserStats(): Promise<UserStats> {
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayStr = yesterday.toISOString().split('T')[0];
 
-        if (trainedToday || workoutDates[0] === yesterdayStr) {
-            const dateSet = new Set(workoutDates);
+        // Verifica se o último treino é recente o suficiente para ter streak
+        // Precisa verificar "pulando" fins de semana sem treino
+        const dateSet = new Set(workoutDates);
+
+        // Encontra o dia mais recente com treino (ou pula weekends)
+        const canStartStreak = (() => {
+            if (trainedToday) return true;
+            // Verifica se ontem ou dias recentes (pulando weekends) têm treino
+            let checkDate = new Date(yesterday);
+            for (let i = 0; i < 4; i++) { // max 4 dias pra trás (cobre sex→seg)
+                const checkStr = checkDate.toISOString().split('T')[0];
+                const dow = checkDate.getDay();
+                if (dateSet.has(checkStr)) return true;
+                if (dow === 0 || dow === 6) {
+                    // Fim de semana sem treino — pula
+                    checkDate.setDate(checkDate.getDate() - 1);
+                    continue;
+                }
+                // Dia útil sem treino — usa freeze se disponível
+                if (freezesUsed < MAX_FREEZES) {
+                    freezesUsed++;
+                    checkDate.setDate(checkDate.getDate() - 1);
+                    continue;
+                }
+                break;
+            }
+            return false;
+        })();
+
+        if (canStartStreak) {
+            // Reset freezes para contar no loop principal
+            freezesUsed = 0;
             let currentDate = new Date(trainedToday ? today : yesterday);
 
             while (true) {
                 const dateStr = currentDate.toISOString().split('T')[0];
+                const dow = currentDate.getDay(); // 0=dom, 6=sab
+
                 if (dateSet.has(dateStr)) {
                     streak++;
                     currentDate.setDate(currentDate.getDate() - 1);
+                } else if (dow === 0 || dow === 6) {
+                    // Fim de semana sem treino — pula automaticamente (não gasta freeze)
+                    currentDate.setDate(currentDate.getDate() - 1);
                 } else if (freezesUsed < MAX_FREEZES) {
+                    // Dia útil sem treino — usa freeze
                     freezesUsed++;
                     currentDate.setDate(currentDate.getDate() - 1);
-                    const prevDateStr = currentDate.toISOString().split('T')[0];
-                    if (!dateSet.has(prevDateStr)) break;
                 } else {
                     break;
                 }
@@ -595,19 +730,109 @@ export async function getUserStats(): Promise<UserStats> {
 
     const streakAtRisk = !trainedToday && streak > 0;
 
+    // Best streak tracking
+    let bestStreak = streak;
+    try {
+        const savedBest = await AsyncStorage.getItem(BEST_STREAK_KEY);
+        if (savedBest) {
+            const parsed = parseInt(savedBest, 10);
+            if (!isNaN(parsed)) bestStreak = Math.max(streak, parsed);
+        }
+        if (streak > 0 && streak >= bestStreak) {
+            await AsyncStorage.setItem(BEST_STREAK_KEY, String(streak));
+        }
+    } catch {}
+
+
     // Meta semanal
     const startOfWeek = new Date();
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
     startOfWeek.setHours(0, 0, 0, 0);
     const weeklyCount = workoutDates.filter(d => d >= startOfWeek.toISOString().split('T')[0]).length;
 
-    return {
+    // Busca IDs dos workouts do usuário finalizados
+    const { data: userWorkouts } = await supabase
+        .from('workouts')
+        .select('id, date')
+        .eq('user_id', user.id)
+        .not('finished_at', 'is', null);
+
+    const workoutIds = userWorkouts?.map(w => w.id) || [];
+    const workoutDateMap = new Map(userWorkouts?.map(w => [w.id, w.date]) || []);
+
+    // Busca exercícios desses workouts
+    const { data: userExercises } = await supabase
+        .from('exercises')
+        .select('id, workout_id, exercise_name')
+        .in('workout_id', workoutIds.length > 0 ? workoutIds : [-1]);
+
+    const exerciseIds = userExercises?.map(e => e.id) || [];
+    const exerciseMap = new Map(userExercises?.map(e => [e.id, { name: e.exercise_name, workout_id: e.workout_id }]) || []);
+
+    // Busca séries desses exercícios
+    const { data: allSets } = await supabase
+        .from('sets')
+        .select('weight, reps, completed, exercise_id')
+        .in('exercise_id', exerciseIds.length > 0 ? exerciseIds : [-1]);
+
+    // Calcula volume total (soma de peso x reps)
+    let volumeTotal = 0;
+    const exerciseWeights: Record<string, { weights: number[], dates: string[] }> = {};
+
+    if (allSets) {
+        for (const set of allSets) {
+            // Volume total
+            if (set.completed && set.weight && set.reps) {
+                volumeTotal += set.weight * set.reps;
+            }
+
+            // Progressão
+            if (set.weight && set.weight > 0) {
+                const exerciseInfo = exerciseMap.get(set.exercise_id);
+                if (exerciseInfo) {
+                    const exerciseName = exerciseInfo.name;
+                    const date = workoutDateMap.get(exerciseInfo.workout_id) || '';
+
+                    if (!exerciseWeights[exerciseName]) {
+                        exerciseWeights[exerciseName] = { weights: [], dates: [] };
+                    }
+                    exerciseWeights[exerciseName].weights.push(set.weight);
+                    exerciseWeights[exerciseName].dates.push(date);
+                }
+            }
+        }
+    }
+
+    // Calcula progressão para exercícios com pelo menos 2 registros
+    const progressao: UserStats['progressao'] = [];
+    for (const [exercicio, data] of Object.entries(exerciseWeights)) {
+        if (data.weights.length >= 2) {
+            const cargaInicial = Math.max(...data.weights.slice(0, Math.ceil(data.weights.length / 3))); // Maior carga do primeiro terço
+            const cargaAtual = Math.max(...data.weights.slice(-Math.ceil(data.weights.length / 3))); // Maior carga do último terço
+            const evolucao = cargaAtual - cargaInicial;
+
+            if (evolucao !== 0) {
+                progressao.push({
+                    exercicio,
+                    cargaInicial,
+                    cargaAtual,
+                    evolucao,
+                });
+            }
+        }
+    }
+
+    // Ordena por maior evolução e pega top 5
+    progressao.sort((a, b) => Math.abs(b.evolucao) - Math.abs(a.evolucao));
+    const topProgressao = progressao.slice(0, 5);
+
+    const stats: UserStats = {
         totalTreinos: totalWorkouts || 0,
         tempoTotal: tempoFormatado,
-        volumeTotal: 0, // Simplificado por enquanto
+        volumeTotal: Math.round(volumeTotal),
         streak: {
             current: streak,
-            best: streak, // Simplificado
+            best: bestStreak,
             trainedToday,
             atRisk: streakAtRisk,
             freezesAvailable: MAX_FREEZES - freezesUsed,
@@ -616,8 +841,22 @@ export async function getUserStats(): Promise<UserStats> {
             atual: weeklyCount,
             meta: 4,
         },
-        progressao: [], // Simplificado
+        progressao: topProgressao,
     };
+
+    // Salva no cache
+    await setCachedUserStats(stats);
+
+    return stats;
+}
+
+// Atualiza stats em background
+async function refreshUserStatsCache(): Promise<void> {
+    try {
+        await fetchAndCacheUserStats();
+    } catch (error) {
+        console.log('[API] Background stats refresh failed:', error);
+    }
 }
 
 // ==================== PERSONAL RECORDS ====================

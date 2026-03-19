@@ -1,5 +1,5 @@
 import { View, Text, TouchableOpacity, Alert, StyleSheet, Platform } from 'react-native';
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useState, useRef, memo } from 'react';
 import { Plus, Swap, Calendar, Lightning, Play, Timer, ArrowRight, Barbell, Bug } from 'phosphor-react-native';
 import { BlurView } from 'expo-blur';
 import { useTheme } from '../../theme';
@@ -9,7 +9,7 @@ import { usePressAnimation } from '../../hooks';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 import { OptionsDropdown } from '../../components/OptionsDropdown';
-import { useWorkout } from '../../context/WorkoutContext';
+import { useWorkoutTimer, useWorkoutMeta, useWorkoutActions } from '../../context/WorkoutContext';
 import { CoreHaptics } from 'expo-core-haptics';
 import { getLastFinishedWorkout } from '../../api';
 import { getDatabase } from '../../db/database';
@@ -18,7 +18,6 @@ import Animated, {
     useAnimatedStyle,
     withTiming,
     withDelay,
-    withSpring,
     withRepeat,
     withSequence,
     Easing,
@@ -388,6 +387,17 @@ const SmartWorkoutSuggestion = ({
     );
 };
 
+// Timer isolado para evitar re-render do TodayWorkoutCard a cada segundo
+const TodayWorkoutTimer = memo(({ style }: { style?: any }) => {
+    const { duration } = useWorkoutTimer();
+    const formatTime = (seconds: number) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+    return <Text style={style}>{formatTime(duration)}</Text>;
+});
+
 // Card principal de treino com glow quando ativo
 const TodayWorkoutCard = ({
     delay = 0,
@@ -397,7 +407,9 @@ const TodayWorkoutCard = ({
     animationKey: number;
 }) => {
     const { theme } = useTheme();
-    const { requestStartWorkout, isActive, workoutName, duration } = useWorkout();
+    // Timer agora é isolado no componente TodayWorkoutTimer para evitar re-renders
+    const { isActive, workoutName } = useWorkoutMeta();
+    const { requestStartWorkout } = useWorkoutActions();
     const { onPressIn, onPressOut, animatedStyle: pressStyle } = usePressAnimation();
 
     // Animações
@@ -456,12 +468,6 @@ const TodayWorkoutCard = ({
         opacity: glowOpacity.value,
     }));
 
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    };
-
     const handlePress = () => {
         if (CoreHaptics.isSupported()) {
             CoreHaptics.tap.medium();
@@ -494,7 +500,7 @@ const TodayWorkoutCard = ({
 
                     <View style={styles.timerRow}>
                         <Timer size={18} color="#fff" weight="bold" />
-                        <Text style={styles.timerText}>{formatTime(duration)}</Text>
+                        <TodayWorkoutTimer style={styles.timerText} />
                     </View>
 
                     <View style={styles.cardFooter}>
@@ -700,7 +706,7 @@ const WeekSection = ({ delay = 0, animationKey }: { delay?: number; animationKey
 // Botão treino vazio animado
 const EmptyWorkoutButton = ({ delay = 0, animationKey }: { delay?: number; animationKey: number }) => {
     const { theme } = useTheme();
-    const { requestStartWorkout } = useWorkout();
+    const { requestStartWorkout } = useWorkoutActions(); // Only needs actions, never re-renders
 
     const opacity = useSharedValue(0);
     const translateY = useSharedValue(12);
@@ -773,7 +779,9 @@ const TemplatesHeader = ({ delay = 0, animationKey }: { delay?: number; animatio
 
 export const HomeScreen = () => {
     const { theme, toggleTheme } = useTheme();
-    const { requestStartWorkout } = useWorkout();
+    const { requestStartWorkout } = useWorkoutActions(); // Only needs actions, never re-renders on timer
+    const { isActive } = useWorkoutMeta();
+    const scrollRef = useRef<Animated.ScrollView>(null);
 
     // Key que muda quando a tela ganha foco - força reset das animações
     const [animationKey, setAnimationKey] = useState(0);
@@ -783,6 +791,13 @@ export const HomeScreen = () => {
     const headerTranslateY = useSharedValue(-20);
     const greetingOpacity = useSharedValue(0);
     const greetingTranslateY = useSharedValue(15);
+
+    // Scroll to top quando treino é iniciado
+    useEffect(() => {
+        if (isActive) {
+            scrollRef.current?.scrollTo({ y: 0, animated: true });
+        }
+    }, [isActive]);
 
     // Reset animações quando tela ganha foco
     useFocusEffect(
@@ -840,6 +855,7 @@ export const HomeScreen = () => {
             </Animated.View>
 
             <Animated.ScrollView
+                ref={scrollRef}
                 style={styles.scrollView}
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}

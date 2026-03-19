@@ -1,87 +1,93 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Modal, TouchableWithoutFeedback, FlatList } from 'react-native';
+import React, { useState, useMemo, useCallback } from 'react';
+import { View, Text, TextInput, TouchableOpacity, Modal, TouchableWithoutFeedback, FlatList, ScrollView } from 'react-native';
 import { useTheme } from '../theme';
 import { MagnifyingGlass, Plus, X } from 'phosphor-react-native';
 
-// Lista de exercícios (plano atual + histórico)
-const COMMON_EXERCISES = [
-    // === PLANO ATUAL ===
-    // Segunda - Push
-    'Supino inclinado halter',
-    'Paralelas',
-    'Elevação lateral',
-    'Coice inclinado',
-    'Pushdown corda unilateral',
-    // Terça - Lower Quad
-    'Agachamento narrow',
-    'Búlgaro',
-    'RDL',
-    'Leg press pés juntos',
-    'Leg curl em pé',
-    'Panturrilha em pé',
-    // Quinta - Pull
-    'Barra fixa com peso',
-    'Remada cavalinho',
-    'Development',
-    'Rosca martelo',
-    'Encolhimento halter unilateral',
-    'Remada inclinada 45°',
-    // Sexta/Sáb - Posterior
-    'Flexora deitado',
-    'Reverse curl',
-    "Farmer's walk snatch grip",
-    'Panturrilha sentado',
-    'Neck curl',
-    'Neck extension',
+// Exercícios organizados por categoria
+const EXERCISES_BY_CATEGORY: Record<string, string[]> = {
+    'Peito': [
+        'Supino inclinado halter',
+        'Supino Reto',
+        'Supino com Halteres',
+        'Supino Inclinado Halteres',
+        'Supino Inclinado 30°',
+        'Paralelas',
+        'Peck Deck',
+        'Crossover na Polia Baixa',
+    ],
+    'Costas': [
+        'Barra fixa com peso',
+        'Barra Fixa',
+        'Pull-Up (Barra Fixa)',
+        'Remada cavalinho',
+        'Remada Baixa',
+        'Remada Baixa na Polia',
+        'Remada Máquina',
+        'Remada Máquina com Peito Apoiado',
+        'Remada inclinada 45°',
+    ],
+    'Ombros': [
+        'Development',
+        'Desenvolvimento',
+        'Desenvolvimento com Halteres',
+        'Desenvolvimento Máquina (Ombros)',
+        'Desenvolvimento Militar',
+        'Elevação lateral',
+        'Elevação Lateral no Banco',
+        'Face Pull',
+        'Encolhimento halter unilateral',
+    ],
+    'Bíceps': [
+        'Rosca martelo',
+        'Rosca Direta com Barra W',
+        'Rosca Martelo Banco Inclinado',
+        'Rosca no Banco Inclinado',
+        'Rosca Halter',
+        'Rosca Inversa',
+        'Reverse curl',
+    ],
+    'Tríceps': [
+        'Coice inclinado',
+        'Pushdown corda unilateral',
+        'Tríceps na Corda (Polia Alta)',
+        'Extensão de Tríceps na Polia',
+        'Tríceps Unilateral EZ',
+        'Mergulho na Paralela',
+    ],
+    'Pernas': [
+        'Agachamento narrow',
+        'Agachamento Livre',
+        'Agachamento',
+        'Búlgaro',
+        'RDL',
+        'Leg Press',
+        'Leg Press 45°',
+        'Leg press pés juntos',
+        'Cadeira Extensora',
+        'Mesa Flexora',
+        'Flexora deitado',
+        'Leg curl em pé',
+        'Stiff',
+        'Stiff com Halteres',
+    ],
+    'Panturrilha': [
+        'Panturrilha em pé',
+        'Panturrilha Em Pé',
+        'Panturrilha sentado',
+        'Panturrilha no Smith Machine',
+    ],
+    'Outros': [
+        "Farmer's walk snatch grip",
+        'Neck curl',
+        'Neck extension',
+        'Prancha Carregada',
+    ],
+};
 
-    // === HISTÓRICO ===
-    // Peito
-    'Supino Reto',
-    'Supino com Halteres',
-    'Supino Inclinado Halteres',
-    'Supino Inclinado 30°',
-    'Peck Deck',
-    'Crossover na Polia Baixa',
-    // Costas
-    'Barra Fixa',
-    'Pull-Up (Barra Fixa)',
-    'Remada Baixa',
-    'Remada Baixa na Polia',
-    'Remada Máquina',
-    'Remada Máquina com Peito Apoiado',
-    // Ombros
-    'Desenvolvimento',
-    'Desenvolvimento com Halteres',
-    'Desenvolvimento Máquina (Ombros)',
-    'Desenvolvimento Militar',
-    'Elevação Lateral no Banco',
-    'Face Pull',
-    // Bíceps
-    'Rosca Direta com Barra W',
-    'Rosca Martelo Banco Inclinado',
-    'Rosca no Banco Inclinado',
-    'Rosca Halter',
-    // Tríceps
-    'Tríceps na Corda (Polia Alta)',
-    'Extensão de Tríceps na Polia',
-    'Tríceps Unilateral EZ',
-    'Mergulho na Paralela',
-    // Pernas
-    'Agachamento Livre',
-    'Agachamento',
-    'Leg Press',
-    'Leg Press 45°',
-    'Cadeira Extensora',
-    'Mesa Flexora',
-    'Stiff',
-    'Stiff com Halteres',
-    // Panturrilha
-    'Panturrilha Em Pé',
-    'Panturrilha no Smith Machine',
-    // Core/Outros
-    'Prancha Carregada',
-    'Rosca Inversa',
-];
+const ALL_CATEGORIES = ['Todos', ...Object.keys(EXERCISES_BY_CATEGORY)];
+
+// Lista plana para busca
+const ALL_EXERCISES = Object.values(EXERCISES_BY_CATEGORY).flat();
 
 interface AddExerciseModalProps {
     visible: boolean;
@@ -92,30 +98,49 @@ interface AddExerciseModalProps {
 export const AddExerciseModal = ({ visible, onClose, onAdd }: AddExerciseModalProps) => {
     const { theme } = useTheme();
     const [search, setSearch] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState('Todos');
 
-    const filteredExercises = search.trim()
-        ? COMMON_EXERCISES.filter(ex =>
-            ex.toLowerCase().includes(search.toLowerCase())
-        )
-        : COMMON_EXERCISES;
+    const filteredExercises = useMemo(() => {
+        let list: string[];
 
-    const handleAdd = (name: string) => {
+        if (selectedCategory === 'Todos') {
+            list = ALL_EXERCISES;
+        } else {
+            list = EXERCISES_BY_CATEGORY[selectedCategory] || [];
+        }
+
+        if (search.trim()) {
+            const query = search.toLowerCase();
+            list = list.filter(ex => ex.toLowerCase().includes(query));
+        }
+
+        return list;
+    }, [search, selectedCategory]);
+
+    const handleAdd = useCallback((name: string) => {
         onAdd(name);
         setSearch('');
+        setSelectedCategory('Todos');
         onClose();
-    };
+    }, [onAdd, onClose]);
 
-    const handleAddCustom = () => {
+    const handleAddCustom = useCallback(() => {
         if (search.trim()) {
             handleAdd(search.trim());
         }
-    };
+    }, [search, handleAdd]);
+
+    const handleClose = useCallback(() => {
+        setSearch('');
+        setSelectedCategory('Todos');
+        onClose();
+    }, [onClose]);
 
     if (!visible) return null;
 
     return (
-        <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
-            <TouchableWithoutFeedback onPress={onClose}>
+        <Modal transparent visible={visible} animationType="slide" onRequestClose={handleClose}>
+            <TouchableWithoutFeedback onPress={handleClose}>
                 <View className="flex-1 justify-end bg-black/50">
                     <TouchableWithoutFeedback>
                         <View
@@ -127,13 +152,46 @@ export const AddExerciseModal = ({ visible, onClose, onAdd }: AddExerciseModalPr
                                 <Text style={{ color: theme.text }} className="text-xl font-bold">
                                     Adicionar Exercício
                                 </Text>
-                                <TouchableOpacity onPress={onClose}>
+                                <TouchableOpacity onPress={handleClose}>
                                     <X size={24} color={theme.textSecondary} />
                                 </TouchableOpacity>
                             </View>
 
+                            {/* Category Chips */}
+                            <ScrollView
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8 }}
+                            >
+                                {ALL_CATEGORIES.map((cat) => {
+                                    const isActive = selectedCategory === cat;
+                                    return (
+                                        <TouchableOpacity
+                                            key={cat}
+                                            onPress={() => setSelectedCategory(cat)}
+                                            style={{
+                                                backgroundColor: isActive ? theme.primary : theme.field,
+                                                paddingHorizontal: 14,
+                                                paddingVertical: 7,
+                                                borderRadius: 20,
+                                            }}
+                                        >
+                                            <Text
+                                                style={{
+                                                    color: isActive ? '#fff' : theme.textSecondary,
+                                                    fontSize: 13,
+                                                    fontWeight: isActive ? '700' : '500',
+                                                }}
+                                            >
+                                                {cat}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
+
                             {/* Search */}
-                            <View className="px-4 py-3">
+                            <View className="px-4 pb-3">
                                 <View
                                     className="flex-row items-center px-4 py-3 rounded-xl"
                                     style={{ backgroundColor: theme.background }}
@@ -145,8 +203,12 @@ export const AddExerciseModal = ({ visible, onClose, onAdd }: AddExerciseModalPr
                                         placeholder="Buscar ou criar exercício..."
                                         placeholderTextColor={theme.textSecondary}
                                         style={{ color: theme.text, flex: 1, marginLeft: 12 }}
-                                        autoFocus
                                     />
+                                    {search.length > 0 && (
+                                        <TouchableOpacity onPress={() => setSearch('')}>
+                                            <X size={18} color={theme.textSecondary} />
+                                        </TouchableOpacity>
+                                    )}
                                 </View>
 
                                 {/* Botão para criar exercício customizado */}
@@ -167,8 +229,9 @@ export const AddExerciseModal = ({ visible, onClose, onAdd }: AddExerciseModalPr
                             {/* Lista de exercícios */}
                             <FlatList
                                 data={filteredExercises}
-                                keyExtractor={(item) => item}
+                                keyExtractor={(item, index) => `${item}-${index}`}
                                 contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+                                keyboardShouldPersistTaps="handled"
                                 renderItem={({ item }) => (
                                     <TouchableOpacity
                                         onPress={() => handleAdd(item)}

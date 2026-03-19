@@ -1,48 +1,40 @@
 /**
- * RestTimer - Timer de descanso entre séries
+ * RestTimerBanner - Timer de descanso inline entre header e exercícios
  *
- * Aparece como um modal/overlay após completar uma série
- * Mostra countdown com animação circular
+ * Aparece como um banner compacto dentro do sheet após completar uma série.
+ * Barra de progresso + countdown + controles (pause, +15s, skip).
  */
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Pressable } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
-    useAnimatedProps,
     withTiming,
     Easing,
-    runOnJS,
     interpolate,
+    Extrapolation,
 } from 'react-native-reanimated';
-import Svg, { Circle } from 'react-native-svg';
 import { useTheme } from '../theme';
-import { Play, Pause, X, Plus, Minus } from 'phosphor-react-native';
+import { Play, Pause, X, Plus } from 'phosphor-react-native';
 import { CoreHaptics } from 'expo-core-haptics';
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-
-interface RestTimerProps {
+interface RestTimerBannerProps {
     visible: boolean;
     initialSeconds: number;
-    onClose: () => void;
+    onDismiss: () => void;
     onFinish: () => void;
 }
 
-const CIRCLE_SIZE = 200;
-const STROKE_WIDTH = 8;
-const RADIUS = (CIRCLE_SIZE - STROKE_WIDTH) / 2;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-
-export const RestTimer = ({ visible, initialSeconds, onClose, onFinish }: RestTimerProps) => {
+export const RestTimerBanner = memo(({ visible, initialSeconds, onDismiss, onFinish }: RestTimerBannerProps) => {
     const { theme } = useTheme();
     const [seconds, setSeconds] = useState(initialSeconds);
     const [isRunning, setIsRunning] = useState(true);
     const [totalSeconds, setTotalSeconds] = useState(initialSeconds);
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Animação do círculo de progresso
+    // Animações
     const progress = useSharedValue(1);
+    const bannerHeight = useSharedValue(0);
 
     // Reset quando timer abre
     useEffect(() => {
@@ -51,6 +43,9 @@ export const RestTimer = ({ visible, initialSeconds, onClose, onFinish }: RestTi
             setTotalSeconds(initialSeconds);
             setIsRunning(true);
             progress.value = 1;
+            bannerHeight.value = withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) });
+        } else {
+            bannerHeight.value = withTiming(0, { duration: 200 });
         }
     }, [visible, initialSeconds]);
 
@@ -67,7 +62,6 @@ export const RestTimer = ({ visible, initialSeconds, onClose, onFinish }: RestTi
         intervalRef.current = setInterval(() => {
             setSeconds(prev => {
                 if (prev <= 1) {
-                    // Timer acabou
                     if (intervalRef.current) {
                         clearInterval(intervalRef.current);
                         intervalRef.current = null;
@@ -117,25 +111,36 @@ export const RestTimer = ({ visible, initialSeconds, onClose, onFinish }: RestTi
         setIsRunning(prev => !prev);
     }, []);
 
-    const addTime = useCallback((amount: number) => {
+    const addTime = useCallback(() => {
         if (CoreHaptics.isSupported()) {
             CoreHaptics.tap.light();
         }
-        setSeconds(prev => Math.max(0, prev + amount));
-        setTotalSeconds(prev => Math.max(prev, seconds + amount));
+        setSeconds(prev => prev + 15);
+        setTotalSeconds(prev => Math.max(prev, seconds + 15));
     }, [seconds]);
 
-    const handleClose = useCallback(() => {
+    const handleDismiss = useCallback(() => {
         if (CoreHaptics.isSupported()) {
             CoreHaptics.tap.light();
         }
-        onClose();
-    }, [onClose]);
+        onDismiss();
+    }, [onDismiss]);
 
-    // Estilos animados
-    const circleProps = useAnimatedProps(() => ({
-        strokeDashoffset: CIRCUMFERENCE * (1 - progress.value),
+    // Estilo animado para a barra de progresso (largura relativa)
+    const progressBarStyle = useAnimatedStyle(() => ({
+        width: `${progress.value * 100}%` as any,
     }));
+
+    // Estilo de entrada/saída do banner
+    const containerStyle = useAnimatedStyle(() => {
+        const h = bannerHeight.value;
+        return {
+            opacity: h,
+            maxHeight: interpolate(h, [0, 1], [0, 120], Extrapolation.CLAMP),
+            marginBottom: interpolate(h, [0, 1], [0, 12], Extrapolation.CLAMP),
+            transform: [{ scale: interpolate(h, [0, 1], [0.95, 1], Extrapolation.CLAMP) }],
+        };
+    });
 
     const formatTime = (secs: number) => {
         const mins = Math.floor(secs / 60);
@@ -143,172 +148,133 @@ export const RestTimer = ({ visible, initialSeconds, onClose, onFinish }: RestTi
         return `${mins}:${remainingSecs.toString().padStart(2, '0')}`;
     };
 
+    // Cor do timer muda nos últimos 5 segundos
+    const isEnding = seconds <= 5 && seconds > 0;
+
     if (!visible) return null;
 
     return (
-        <Modal
-            visible={visible}
-            transparent
-            animationType="fade"
-            onRequestClose={handleClose}
-            statusBarTranslucent
-        >
-            <View style={[styles.container, { backgroundColor: 'rgba(0,0,0,0.9)' }]}>
-                {/* Botão de fechar */}
-                <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-                    <X size={28} color="#fff" weight="bold" />
-                </TouchableOpacity>
+        <Animated.View style={[styles.container, containerStyle]}>
+            <View style={[styles.banner, { backgroundColor: theme.field }]}>
+                {/* Barra de progresso no topo */}
+                <View style={[styles.progressBar, { backgroundColor: theme.borderSubtle }]}>
+                    <Animated.View
+                        style={[
+                            styles.progressFill,
+                            { backgroundColor: isEnding ? '#f59e0b' : theme.primary },
+                            progressBarStyle,
+                        ]}
+                    />
+                </View>
 
-                {/* Título */}
-                <Text style={styles.title}>Descanso</Text>
+                {/* Conteúdo */}
+                <View style={styles.content}>
+                    {/* Lado esquerdo: Timer */}
+                    <View style={styles.timerSection}>
+                        <Text style={[styles.label, { color: theme.textSecondary }]}>DESCANSO</Text>
+                        <Text style={[
+                            styles.timeText,
+                            { color: isEnding ? '#f59e0b' : theme.text },
+                        ]}>
+                            {formatTime(seconds)}
+                        </Text>
+                    </View>
 
-                {/* Timer circular */}
-                <View style={styles.timerContainer}>
-                    <Svg width={CIRCLE_SIZE} height={CIRCLE_SIZE} style={styles.svg}>
-                        {/* Background circle */}
-                        <Circle
-                            cx={CIRCLE_SIZE / 2}
-                            cy={CIRCLE_SIZE / 2}
-                            r={RADIUS}
-                            stroke="rgba(255,255,255,0.2)"
-                            strokeWidth={STROKE_WIDTH}
-                            fill="transparent"
-                        />
-                        {/* Progress circle */}
-                        <AnimatedCircle
-                            cx={CIRCLE_SIZE / 2}
-                            cy={CIRCLE_SIZE / 2}
-                            r={RADIUS}
-                            stroke={theme.primary}
-                            strokeWidth={STROKE_WIDTH}
-                            fill="transparent"
-                            strokeDasharray={CIRCUMFERENCE}
-                            animatedProps={circleProps}
-                            strokeLinecap="round"
-                            rotation="-90"
-                            origin={`${CIRCLE_SIZE / 2}, ${CIRCLE_SIZE / 2}`}
-                        />
-                    </Svg>
+                    {/* Lado direito: Controles */}
+                    <View style={styles.controls}>
+                        {/* +15s */}
+                        <TouchableOpacity
+                            style={[styles.controlBtn, { backgroundColor: theme.borderSubtle }]}
+                            onPress={addTime}
+                        >
+                            <Plus size={14} color={theme.text} weight="bold" />
+                            <Text style={[styles.controlText, { color: theme.text }]}>15s</Text>
+                        </TouchableOpacity>
 
-                    {/* Tempo no centro */}
-                    <View style={styles.timeContainer}>
-                        <Text style={styles.timeText}>{formatTime(seconds)}</Text>
+                        {/* Play/Pause */}
+                        <TouchableOpacity
+                            style={[styles.playBtn, { backgroundColor: theme.primary }]}
+                            onPress={togglePause}
+                        >
+                            {isRunning ? (
+                                <Pause size={16} color="#fff" weight="fill" />
+                            ) : (
+                                <Play size={16} color="#fff" weight="fill" />
+                            )}
+                        </TouchableOpacity>
+
+                        {/* Fechar/Pular */}
+                        <TouchableOpacity
+                            style={[styles.controlBtn, { backgroundColor: theme.borderSubtle }]}
+                            onPress={handleDismiss}
+                        >
+                            <X size={16} color={theme.textSecondary} weight="bold" />
+                        </TouchableOpacity>
                     </View>
                 </View>
-
-                {/* Controles */}
-                <View style={styles.controls}>
-                    {/* -15s */}
-                    <TouchableOpacity
-                        style={[styles.adjustButton, { backgroundColor: 'rgba(255,255,255,0.1)' }]}
-                        onPress={() => addTime(-15)}
-                    >
-                        <Minus size={20} color="#fff" weight="bold" />
-                        <Text style={styles.adjustText}>15s</Text>
-                    </TouchableOpacity>
-
-                    {/* Play/Pause */}
-                    <TouchableOpacity
-                        style={[styles.playButton, { backgroundColor: theme.primary }]}
-                        onPress={togglePause}
-                    >
-                        {isRunning ? (
-                            <Pause size={32} color="#fff" weight="fill" />
-                        ) : (
-                            <Play size={32} color="#fff" weight="fill" />
-                        )}
-                    </TouchableOpacity>
-
-                    {/* +15s */}
-                    <TouchableOpacity
-                        style={[styles.adjustButton, { backgroundColor: 'rgba(255,255,255,0.1)' }]}
-                        onPress={() => addTime(15)}
-                    >
-                        <Plus size={20} color="#fff" weight="bold" />
-                        <Text style={styles.adjustText}>15s</Text>
-                    </TouchableOpacity>
-                </View>
-
-                {/* Skip */}
-                <TouchableOpacity style={styles.skipButton} onPress={handleClose}>
-                    <Text style={styles.skipText}>Pular descanso</Text>
-                </TouchableOpacity>
             </View>
-        </Modal>
+        </Animated.View>
     );
-};
+});
 
 const styles = StyleSheet.create({
     container: {
-        flex: 1,
-        justifyContent: 'center',
+        paddingHorizontal: 16,
+        overflow: 'hidden',
+    },
+    banner: {
+        borderRadius: 12,
+        overflow: 'hidden',
+    },
+    progressBar: {
+        height: 3,
+        width: '100%',
+    },
+    progressFill: {
+        height: '100%',
+    },
+    content: {
+        flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 20,
+        justifyContent: 'space-between',
+        paddingHorizontal: 14,
+        paddingVertical: 10,
     },
-    closeButton: {
-        position: 'absolute',
-        top: 60,
-        right: 20,
-        padding: 8,
+    timerSection: {
+        gap: 2,
     },
-    title: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: '#fff',
-        marginBottom: 40,
-    },
-    timerContainer: {
-        width: CIRCLE_SIZE,
-        height: CIRCLE_SIZE,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    svg: {
-        position: 'absolute',
-    },
-    timeContainer: {
-        justifyContent: 'center',
-        alignItems: 'center',
+    label: {
+        fontSize: 10,
+        fontWeight: '800',
+        letterSpacing: 1,
     },
     timeText: {
-        fontSize: 56,
+        fontSize: 28,
         fontWeight: 'bold',
-        color: '#fff',
         fontVariant: ['tabular-nums'],
     },
     controls: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 40,
-        gap: 20,
+        gap: 8,
     },
-    adjustButton: {
+    controlBtn: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderRadius: 12,
-        gap: 4,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        borderRadius: 8,
+        gap: 3,
     },
-    adjustText: {
-        color: '#fff',
-        fontWeight: '600',
-        fontSize: 14,
+    controlText: {
+        fontSize: 12,
+        fontWeight: '700',
     },
-    playButton: {
-        width: 72,
-        height: 72,
-        borderRadius: 36,
+    playBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
         justifyContent: 'center',
         alignItems: 'center',
-    },
-    skipButton: {
-        marginTop: 40,
-        padding: 16,
-    },
-    skipText: {
-        color: 'rgba(255,255,255,0.6)',
-        fontSize: 16,
-        fontWeight: '500',
     },
 });

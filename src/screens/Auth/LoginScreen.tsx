@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
     View,
     Text,
@@ -20,17 +20,12 @@ export default function LoginScreen() {
     const [password, setPassword] = useState('');
     const [isSignUp, setIsSignUp] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [rememberMe, setRememberMeState] = useState(false);
+    const [rememberMe, setRememberMeState] = useState(() => getRememberMe());
 
-    // Carrega preferência de "Lembrar de mim"
-    useEffect(() => {
-        getRememberMe().then(setRememberMeState);
-    }, []);
-
-    const toggleRememberMe = async () => {
+    const toggleRememberMe = () => {
         const newValue = !rememberMe;
         setRememberMeState(newValue);
-        await setRememberMe(newValue);
+        setRememberMe(newValue);
     };
 
     const handleSubmit = async () => {

@@ -109,6 +109,35 @@ export const ActiveWorkoutScreen = () => {
         }));
     }, []);
 
+    const handleFillFromPR = useCallback((exerciseId: string, setId: string) => {
+        // This screen is deprecated - placeholder implementation
+        setExercises((prev: any[]) => prev.map(ex => {
+            if (ex.id !== exerciseId) return ex;
+            return {
+                ...ex,
+                sets: ex.sets.map((s: any) => {
+                    if (s.id !== setId || !s.prData) return s;
+                    return {
+                        ...s,
+                        kg: String(s.prData.weight),
+                        reps: String(s.prData.reps),
+                        rir: s.prData.rir !== null ? String(s.prData.rir) : '',
+                    };
+                })
+            };
+        }));
+    }, []);
+
+    const handleReplaceExercise = useCallback((exerciseId: string, newName: string) => {
+        setExercises((prev: any[]) => prev.map(ex => {
+            if (ex.id !== exerciseId) return ex;
+            return {
+                ...ex,
+                name: newName,
+            };
+        }));
+    }, []);
+
     const handleFinish = () => {
         Alert.alert('Finish Workout', 'Are you sure you want to finish?', [
             { text: 'Cancel', style: 'cancel' },
@@ -161,6 +190,7 @@ export const ActiveWorkoutScreen = () => {
                         onUpdateSet={handleUpdateSet}
                         onToggleSet={handleToggleSet}
                         onChangeSetType={handleChangeSetType}
+                        onFillFromPR={handleFillFromPR}
                     />
                 ))}
 

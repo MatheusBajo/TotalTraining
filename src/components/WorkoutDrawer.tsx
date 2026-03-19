@@ -1,23 +1,34 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, memo } from 'react';
 import { View, Text, TouchableOpacity, Dimensions, ScrollView, Alert, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
-import { useWorkout } from '../context/WorkoutContext';
+import { useWorkoutTimer, useWorkoutMeta, useWorkoutExercises, useWorkoutActions } from '../context/WorkoutContext';
 import { CaretDown, DotsThree } from 'phosphor-react-native';
 import { ExerciseCard } from './ExerciseCard';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const MINIMIZED_HEIGHT = 80;
 
+// Timer isolado para evitar re-render do WorkoutDrawer inteiro a cada segundo
+const DrawerTimer = memo(({ style, className }: { style?: any; className?: string }) => {
+    const { duration } = useWorkoutTimer();
+    const formatTime = (seconds: number) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+    return <Text style={style} className={className}>{formatTime(duration)}</Text>;
+});
+
 export const WorkoutDrawer = () => {
     const { theme } = useTheme();
     const insets = useSafeAreaInsets();
+
+    // Separate context hooks for optimal re-renders
+    // Timer agora é isolado no componente DrawerTimer para evitar re-renders
+    const { isActive, isMinimized, workoutName } = useWorkoutMeta();
+    const { exercises } = useWorkoutExercises();
     const {
-        isActive,
-        isMinimized,
-        workoutName,
-        duration,
-        exercises,
         minimizeWorkout,
         maximizeWorkout,
         finishWorkout,
@@ -25,8 +36,10 @@ export const WorkoutDrawer = () => {
         addSet,
         updateSet,
         toggleSet,
-        changeSetType
-    } = useWorkout();
+        changeSetType,
+        fillFromPR,
+        replaceExercise
+    } = useWorkoutActions();
 
     const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
@@ -53,12 +66,6 @@ export const WorkoutDrawer = () => {
             }).start();
         }
     }, [isActive, isMinimized]);
-
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    };
 
     const handleFinish = () => {
         Alert.alert('Finish Workout', 'Are you sure you want to finish?', [
@@ -114,7 +121,7 @@ export const WorkoutDrawer = () => {
                 >
                     <View>
                         <Text style={{ color: theme.text }} className="font-bold text-base">{workoutName}</Text>
-                        <Text style={{ color: theme.primary }} className="font-medium">{formatTime(duration)}</Text>
+                        <DrawerTimer style={{ color: theme.primary }} className="font-medium" />
                     </View>
                     <View className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600 absolute top-2 left-1/2 -ml-5" />
                 </TouchableOpacity>
@@ -140,7 +147,7 @@ export const WorkoutDrawer = () => {
                         <View className="flex-row justify-between items-start">
                             <View>
                                 <Text style={{ color: theme.text }} className="text-2xl font-bold">{workoutName}</Text>
-                                <Text style={{ color: theme.textSecondary }} className="text-base">{formatTime(duration)}</Text>
+                                <DrawerTimer style={{ color: theme.textSecondary }} className="text-base" />
                             </View>
                             <TouchableOpacity>
                                 <DotsThree size={24} color={theme.text} weight="bold" />
@@ -159,6 +166,7 @@ export const WorkoutDrawer = () => {
                                 onUpdateSet={updateSet}
                                 onToggleSet={toggleSet}
                                 onChangeSetType={changeSetType}
+                                onFillFromPR={fillFromPR}
                             />
                         ))}
 

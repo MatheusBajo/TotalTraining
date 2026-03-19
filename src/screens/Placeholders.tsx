@@ -318,19 +318,18 @@ import ReAnimated, {
     useSharedValue,
     useAnimatedStyle,
     withTiming,
-    withSpring,
     withDelay,
     withSequence,
     withRepeat,
     interpolate,
     Easing,
-    runOnJS,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CoreHaptics } from 'expo-core-haptics';
 import { useDev } from '../context/DevContext';
 
 // Número animado que conta de 0 até o valor final com haptics SINCRONIZADOS
+// OTIMIZADO: Usa Reanimated para rodar no UI thread, não bloqueia JS
 const AnimatedNumber = ({
     value,
     duration = 1200,
@@ -340,8 +339,8 @@ const AnimatedNumber = ({
     style,
     decimals = 0,
     enableHaptics = false,
-    hapticSteps = 8, // Quantidade de taps durante a animação
-    animationKey = 0, // Key para forçar re-animação
+    hapticSteps = 8,
+    animationKey = 0,
 }: {
     value: number;
     duration?: number;
@@ -354,16 +353,24 @@ const AnimatedNumber = ({
     hapticSteps?: number;
     animationKey?: number;
 }) => {
-    const [displayValue, setDisplayValue] = useState(0);
     const animatedValue = useSharedValue(0);
     const lastHapticStep = useRef(-1);
+    const [displayValue, setDisplayValue] = useState(0);
+    const isAnimating = useRef(false);
 
     useEffect(() => {
-        // Reset display value imediatamente
-        setDisplayValue(0);
+        // Reset
         animatedValue.value = 0;
         lastHapticStep.current = -1;
+        isAnimating.current = true;
+        setDisplayValue(0);
 
+        if (value === 0) {
+            isAnimating.current = false;
+            return;
+        }
+
+        // Anima no UI thread (visual smooth)
         animatedValue.value = withDelay(
             delay,
             withTiming(value, {
@@ -372,42 +379,56 @@ const AnimatedNumber = ({
             })
         );
 
-        // Update display value e trigger haptics SINCRONIZADOS
-        const interval = setInterval(() => {
-            const current = animatedValue.value;
-            setDisplayValue(current);
+        // Estratégia adaptativa: max 30 steps para não travar JS thread
+        // Valores pequenos (<=30): 1 step por número (conta 0,1,2,3...)
+        // Valores grandes (>30): 30 steps distribuídos
+        const MAX_STEPS = 30;
+        const intValue = Math.round(value);
+        const totalSteps = Math.min(intValue, MAX_STEPS);
+        const stepInterval = duration / totalSteps;
 
-            // Haptics progressivos sincronizados com o valor
-            if (enableHaptics && value > 0 && CoreHaptics.isSupported()) {
-                const progress = current / value; // 0 a 1
-                const currentStep = Math.floor(progress * hapticSteps);
+        const timeouts: NodeJS.Timeout[] = [];
+        for (let i = 1; i <= totalSteps; i++) {
+            const stepTime = delay + (stepInterval * i);
 
-                if (currentStep > lastHapticStep.current && currentStep <= hapticSteps) {
-                    lastHapticStep.current = currentStep;
+            // Valor: conta exata para pequenos, distribuído para grandes
+            const displayVal = intValue <= MAX_STEPS
+                ? i
+                : Math.round((i / totalSteps) * intValue);
 
-                    // Sharpness progressivo: grave (0.1) → agudo (0.8)
-                    const sharpness = 0.1 + (progress * 0.7);
-                    // Intensidade levemente decrescente: 0.8 → 0.6
-                    const intensity = 0.8 - (progress * 0.2);
+            const timeout = setTimeout(() => {
+                if (isAnimating.current) {
+                    setDisplayValue(displayVal);
 
-                    CoreHaptics.tap.custom(intensity, sharpness);
+                    // Haptics nos pontos proporcionais
+                    if (enableHaptics && CoreHaptics.isSupported()) {
+                        const progress = i / totalSteps;
+                        const hapticStep = Math.floor(progress * hapticSteps);
+                        if (hapticStep > lastHapticStep.current) {
+                            lastHapticStep.current = hapticStep;
+                            const sharpness = 0.1 + (progress * 0.7);
+                            const intensity = 0.8 - (progress * 0.2);
+                            CoreHaptics.tap.custom(intensity, sharpness);
+                        }
+                    }
                 }
-            }
-        }, 16);
+            }, stepTime);
+            timeouts.push(timeout);
+        }
 
-        const timeout = setTimeout(() => {
-            clearInterval(interval);
+        // Valor final (garante precisão para decimais)
+        const finalTimeout = setTimeout(() => {
+            isAnimating.current = false;
             setDisplayValue(value);
-
-            // Tap final de sucesso
             if (enableHaptics && value > 0 && CoreHaptics.isSupported()) {
                 CoreHaptics.patterns.success();
             }
-        }, duration + delay + 100);
+        }, duration + delay + 50);
+        timeouts.push(finalTimeout);
 
         return () => {
-            clearInterval(interval);
-            clearTimeout(timeout);
+            isAnimating.current = false;
+            timeouts.forEach(t => clearTimeout(t));
         };
     }, [value, duration, delay, enableHaptics, hapticSteps, animationKey]);
 
@@ -423,6 +444,7 @@ const AnimatedNumber = ({
 };
 
 // Progress circle animado com haptics SINCRONIZADOS
+// OTIMIZADO: Atualiza menos vezes para não bloquear JS thread
 const AnimatedProgressCircle = ({
     progress,
     size = 70,
@@ -434,7 +456,7 @@ const AnimatedProgressCircle = ({
     theme,
     enableHaptics = true,
     hapticSteps = 6,
-    animationKey = 0, // Key para forçar re-animação
+    animationKey = 0,
 }: {
     progress: number;
     size?: number;
@@ -449,66 +471,66 @@ const AnimatedProgressCircle = ({
     animationKey?: number;
 }) => {
     const [currentProgress, setCurrentProgress] = useState(0);
-    const animatedProgress = useSharedValue(0);
     const lastHapticStep = useRef(-1);
+    const isAnimating = useRef(false);
 
     useEffect(() => {
         // Reset imediato
         setCurrentProgress(0);
-        animatedProgress.value = 0;
         lastHapticStep.current = -1;
+        isAnimating.current = true;
 
-        animatedProgress.value = withDelay(
-            delay,
-            withTiming(progress, {
-                duration,
-                easing: Easing.out(Easing.cubic),
-            })
-        );
+        if (progress === 0) {
+            isAnimating.current = false;
+            return;
+        }
 
-        // Update display value e trigger haptics SINCRONIZADOS
-        const interval = setInterval(() => {
-            const current = animatedProgress.value;
-            setCurrentProgress(current);
+        // 20 steps = porcentagem sobe ~4% por step (suave) sem sobrecarregar JS
+        const updateSteps = 20;
+        const stepDuration = duration / updateSteps;
+        const timeouts: NodeJS.Timeout[] = [];
 
-            // Haptics progressivos sincronizados com o círculo
-            if (enableHaptics && progress > 0 && CoreHaptics.isSupported()) {
-                const normalizedProgress = current / progress; // 0 a 1 relativo ao progresso final
-                const currentStep = Math.floor(normalizedProgress * hapticSteps);
+        for (let i = 1; i <= updateSteps; i++) {
+            const timeout = setTimeout(() => {
+                if (isAnimating.current) {
+                    const animProgress = i / updateSteps;
+                    const currentValue = progress * animProgress;
+                    setCurrentProgress(currentValue);
 
-                if (currentStep > lastHapticStep.current && currentStep <= hapticSteps) {
-                    lastHapticStep.current = currentStep;
-
-                    // Sharpness progressivo: grave (0.1) → agudo (0.7)
-                    const sharpness = 0.1 + (normalizedProgress * 0.6);
-                    // Intensidade baseada no progresso final (meta alta = mais intenso)
-                    const baseIntensity = 0.5 + (progress * 0.3);
-                    const intensity = baseIntensity - (normalizedProgress * 0.15);
-
-                    CoreHaptics.tap.custom(intensity, sharpness);
+                    // Haptics
+                    if (enableHaptics && progress > 0 && CoreHaptics.isSupported()) {
+                        const hapticStep = Math.floor(animProgress * hapticSteps);
+                        if (hapticStep > lastHapticStep.current) {
+                            lastHapticStep.current = hapticStep;
+                            const sharpness = 0.1 + (animProgress * 0.6);
+                            const baseIntensity = 0.5 + (progress * 0.3);
+                            const intensity = baseIntensity - (animProgress * 0.15);
+                            CoreHaptics.tap.custom(intensity, sharpness);
+                        }
+                    }
                 }
-            }
-        }, 16);
+            }, delay + (stepDuration * i));
+            timeouts.push(timeout);
+        }
 
-        const timeout = setTimeout(() => {
-            clearInterval(interval);
+        // Valor final
+        const finalTimeout = setTimeout(() => {
+            isAnimating.current = false;
             setCurrentProgress(progress);
 
-            // Haptic final baseado se atingiu a meta
             if (enableHaptics && progress > 0 && CoreHaptics.isSupported()) {
                 if (progress >= 1) {
-                    // Meta atingida! Celebração
                     CoreHaptics.patterns.goalComplete();
                 } else {
-                    // Terminou mas não completou
                     CoreHaptics.patterns.success();
                 }
             }
-        }, duration + delay + 100);
+        }, duration + delay + 50);
+        timeouts.push(finalTimeout);
 
         return () => {
-            clearInterval(interval);
-            clearTimeout(timeout);
+            isAnimating.current = false;
+            timeouts.forEach(t => clearTimeout(t));
         };
     }, [progress, duration, delay, enableHaptics, hapticSteps, animationKey]);
 
@@ -565,10 +587,10 @@ const StreakCard = ({
                 )
             );
 
-            // Fire bounce in
+            // Fire scale in (suave, sem bounce)
             fireScale.value = withDelay(
                 animationDelay,
-                withSpring(1, { damping: 8, stiffness: 100 })
+                withTiming(1, { duration: 400, easing: Easing.out(Easing.cubic) })
             );
 
             // Subtle rotation
@@ -624,8 +646,9 @@ const StreakCard = ({
         );
     }
 
-    const fireColor = streak.atRisk ? '#fbbf24' : '#f97316';
-    const glowColor = streak.atRisk ? 'rgba(251, 191, 36, 0.4)' : 'rgba(249, 115, 22, 0.4)';
+    const isRecord = streak.current >= streak.best && streak.current > 0;
+    const fireColor = streak.atRisk ? '#fbbf24' : isRecord ? '#eab308' : '#f97316';
+    const glowColor = streak.atRisk ? 'rgba(251, 191, 36, 0.4)' : isRecord ? 'rgba(234, 179, 8, 0.4)' : 'rgba(249, 115, 22, 0.4)';
 
     return (
         <View style={{ backgroundColor: theme.surface }} className="flex-1 ml-2 rounded-xl overflow-hidden">
@@ -661,12 +684,12 @@ const StreakCard = ({
                     />
                 </View>
                 <Text style={{ color: theme.textSecondary }} className="text-xs mt-2">
-                    {streak.atRisk ? 'Streak em risco!' : 'Streak'}
+                    {streak.atRisk ? 'Streak em risco!' : isRecord ? 'Recorde!' : 'Streak'}
                 </Text>
                 <Text style={{ color: theme.text }} className="font-bold">
                     {streak.trainedToday ? 'treinou hoje' : 'dias seguidos'}
                 </Text>
-                {streak.best > streak.current && (
+                {streak.best > streak.current && streak.best > 0 && (
                     <Text style={{ color: theme.textSecondary }} className="text-xs mt-1">
                         Recorde: {streak.best}
                     </Text>
@@ -1013,7 +1036,7 @@ export const ProfileScreen = () => {
             </Animated.View>
 
             {/* Stats Cards - Meta semanal e Streak */}
-            <Animated.View style={getItemStyle(1)} className="flex-row justify-between mb-4" key={animationKey}>
+            <Animated.View style={getItemStyle(1)} className="flex-row justify-between mb-4">
                 <WeeklyGoalCard
                     metaSemanal={stats.metaSemanal}
                     theme={theme}

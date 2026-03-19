@@ -6,7 +6,7 @@
  * 2. Com botão padrão (DotsThree)
  */
 import React, { useState, useRef, useCallback, useEffect, ReactNode } from 'react';
-import { View, Text, Modal, StyleSheet, Pressable, Dimensions } from 'react-native';
+import { View, Text, Modal, StyleSheet, Pressable, Dimensions, ScrollView } from 'react-native';
 import Animated, {
     useAnimatedStyle,
     useSharedValue,
@@ -300,10 +300,12 @@ export const ActionDropdown = ({
                             left: position.x,
                             transformOrigin: getTransformOrigin(),
                             maxHeight: Dimensions.get('window').height * 0.6,
+                            overflow: 'hidden',
                         },
                         dropdownStyle,
                     ]}
                 >
+                    <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
                     {options.map((opt, index) => {
                         const optColor = opt.destructive
                             ? '#ef4444'
@@ -360,6 +362,7 @@ export const ActionDropdown = ({
                             </Pressable>
                         );
                     })}
+                    </ScrollView>
                 </Animated.View>
             </Modal>
         </>

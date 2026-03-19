@@ -7,7 +7,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSheetAnimation } from '../context/SheetAnimationContext';
-import { useWorkout } from '../context/WorkoutContext';
+import { useWorkoutMeta, useWorkoutActions } from '../context/WorkoutContext';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MINI_PLAYER_HEIGHT = 70;
@@ -16,7 +16,10 @@ const TAB_BAR_HEIGHT = 60;
 export const SheetBackdrop = () => {
     const insets = useSafeAreaInsets();
     const { animatedPosition, screenHeight } = useSheetAnimation();
-    const { isActive, isMinimized, minimizeWorkout } = useWorkout();
+
+    // Optimized: doesn't re-render on timer or exercise/set updates
+    const { isActive } = useWorkoutMeta();
+    const { minimizeWorkout } = useWorkoutActions();
 
     const navbarHeight = TAB_BAR_HEIGHT + insets.bottom;
     const snapPointMinimized = MINI_PLAYER_HEIGHT + navbarHeight + 10;
@@ -33,11 +36,13 @@ export const SheetBackdrop = () => {
             [0.5, 0.2, 0],
             Extrapolation.CLAMP
         );
-        return { opacity };
+        return {
+            opacity,
+            pointerEvents: opacity > 0.01 ? 'auto' : 'none',
+        };
     });
 
-    // Só mostra se treino ativo e não minimizado
-    if (!isActive || isMinimized) return null;
+    if (!isActive) return null;
 
     return (
         <TouchableWithoutFeedback onPress={minimizeWorkout}>

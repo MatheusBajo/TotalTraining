@@ -1,10 +1,9 @@
-import React, { memo, useCallback, useState, useMemo } from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { useTheme } from '../theme';
-import { CaretUp } from 'phosphor-react-native';
+// CaretUp removido — nome do exercício agora abre ExerciseDetailModal
 import { SetRow } from './SetRow';
 import { SetType } from './SetTypeModal';
-import { ExercisePickerModal } from './ExercisePickerModal';
 import { ActionDropdown, DropdownOption } from './ActionDropdown';
 
 interface ExerciseSet {
@@ -33,10 +32,12 @@ interface ExerciseCardProps {
     onToggleSet: (exerciseId: string, setId: string) => void;
     onChangeSetType: (exerciseId: string, setId: string, type: SetType) => void;
     onFillFromPR: (exerciseId: string, setId: string) => void;
-    onReplaceExercise?: (exerciseId: string, newName: string) => void;
+    onShowExercisePicker?: (exerciseId: string) => void;
+    onOpenExerciseDetail?: (exerciseId: string) => void;
     onRemoveSet?: (exerciseId: string, setId: string) => void;
     onToggleSuperset?: (exerciseId: string) => void;
     onRemoveExercise?: (exerciseId: string) => void;
+    notes?: string;
     isSuperset?: boolean;
     supersetPosition?: 'first' | 'last' | 'middle';
     isSupersetLinkedWithNext?: boolean;
@@ -51,16 +52,17 @@ const ExerciseCardComponent = ({
     onToggleSet,
     onChangeSetType,
     onFillFromPR,
-    onReplaceExercise,
+    onShowExercisePicker,
+    onOpenExerciseDetail,
     onRemoveSet,
     onToggleSuperset,
     onRemoveExercise,
+    notes,
     isSuperset = false,
     supersetPosition,
     isSupersetLinkedWithNext = false,
 }: ExerciseCardProps) => {
     const { theme } = useTheme();
-    const [showExercisePicker, setShowExercisePicker] = useState(false);
 
     // Memoiza callbacks
     const handleAddSet = useCallback(() => {
@@ -89,11 +91,17 @@ const ExerciseCardComponent = ({
         }
     }, [exerciseId, onRemoveSet]);
 
-    const handleSelectExercise = useCallback((newName: string) => {
-        if (onReplaceExercise) {
-            onReplaceExercise(exerciseId, newName);
+    const handleOpenExercisePicker = useCallback(() => {
+        if (onShowExercisePicker) {
+            onShowExercisePicker(exerciseId);
         }
-    }, [exerciseId, onReplaceExercise]);
+    }, [exerciseId, onShowExercisePicker]);
+
+    const handleOpenExerciseDetail = useCallback(() => {
+        if (onOpenExerciseDetail) {
+            onOpenExerciseDetail(exerciseId);
+        }
+    }, [exerciseId, onOpenExerciseDetail]);
 
     const handleToggleSuperset = useCallback(() => {
         if (onToggleSuperset) {
@@ -132,7 +140,7 @@ const ExerciseCardComponent = ({
                 id: 'replace',
                 label: 'Trocar exercício',
                 icon: 'edit',
-                onPress: () => setShowExercisePicker(true),
+                onPress: handleOpenExercisePicker,
             },
         ];
 
@@ -159,7 +167,7 @@ const ExerciseCardComponent = ({
         }
 
         return options;
-    }, [onToggleSuperset, isSupersetLinkedWithNext, handleToggleSuperset, onRemoveExercise, handleRemoveExercise]);
+    }, [handleOpenExercisePicker, onToggleSuperset, isSupersetLinkedWithNext, handleToggleSuperset, onRemoveExercise, handleRemoveExercise]);
 
     // Estilos computados com useMemo
     const containerStyle = useMemo(() => {
@@ -224,7 +232,7 @@ const ExerciseCardComponent = ({
             {/* Header */}
             <View className="flex-row justify-between items-center px-4 mb-4">
                 <TouchableOpacity
-                    onPress={() => setShowExercisePicker(true)}
+                    onPress={handleOpenExerciseDetail}
                     className="flex-row items-center flex-1"
                     activeOpacity={0.7}
                 >
@@ -241,7 +249,6 @@ const ExerciseCardComponent = ({
                     <Text style={{ color: theme.primary }} className="font-bold text-lg uppercase flex-1" numberOfLines={1}>
                         {name}
                     </Text>
-                    <CaretUp size={16} color={theme.primary} weight="bold" style={{ marginLeft: 4 }} />
                 </TouchableOpacity>
 
                 {/* Menu de opções usando ActionDropdown */}
@@ -255,13 +262,12 @@ const ExerciseCardComponent = ({
                 </View>
             </View>
 
-            {/* Modal de troca de exercício */}
-            <ExercisePickerModal
-                visible={showExercisePicker}
-                onClose={() => setShowExercisePicker(false)}
-                onSelect={handleSelectExercise}
-                currentExerciseName={name}
-            />
+            {/* Notas do exercício */}
+            {notes ? (
+                <View style={{ backgroundColor: '#fef3c7', marginHorizontal: 16, marginBottom: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
+                    <Text style={{ color: '#92400e', fontSize: 12 }}>{notes}</Text>
+                </View>
+            ) : null}
 
             {/* Column Headers */}
             <View className="flex-row px-4 mb-2">
@@ -318,11 +324,13 @@ export const ExerciseCard = memo(ExerciseCardComponent, (prevProps, nextProps) =
     if (
         prevProps.exerciseId !== nextProps.exerciseId ||
         prevProps.name !== nextProps.name ||
+        prevProps.notes !== nextProps.notes ||
         prevProps.isSuperset !== nextProps.isSuperset ||
         prevProps.supersetPosition !== nextProps.supersetPosition ||
         prevProps.isSupersetLinkedWithNext !== nextProps.isSupersetLinkedWithNext ||
         (prevProps.onToggleSuperset !== undefined) !== (nextProps.onToggleSuperset !== undefined) ||
-        (prevProps.onRemoveExercise !== undefined) !== (nextProps.onRemoveExercise !== undefined)
+        (prevProps.onRemoveExercise !== undefined) !== (nextProps.onRemoveExercise !== undefined) ||
+        (prevProps.onOpenExerciseDetail !== undefined) !== (nextProps.onOpenExerciseDetail !== undefined)
     ) {
         return false;
     }

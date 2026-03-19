@@ -5,7 +5,6 @@ import Animated, {
     useAnimatedStyle,
     withSequence,
     withTiming,
-    withSpring,
     withDelay,
     interpolate,
     runOnJS,
@@ -103,6 +102,12 @@ const SetRowComponent = ({
         return type === 'F' || (rir !== '' && parseFloat(rir) === 0);
     }, [type, rir]);
 
+    // Verifica se valores atuais igualam o anterior (strikethrough)
+    const isMatchedPR = useMemo(() => {
+        if (!prData || !kg || !reps) return false;
+        return kg.trim() === String(prData.weight) && reps.trim() === String(prData.reps);
+    }, [kg, reps, prData]);
+
     // ========== HANDLERS ==========
     const handleRemove = useCallback(() => {
         if (onRemove) {
@@ -131,7 +136,7 @@ const SetRowComponent = ({
                 translateX.value = withTiming(-400, { duration: 200 });
                 runOnJS(handleRemove)();
             } else {
-                translateX.value = withSpring(0, { damping: 15, stiffness: 150 });
+                translateX.value = withTiming(0, { duration: 250, easing: Easing.out(Easing.cubic) });
                 deleteOpacity.value = withTiming(0, { duration: 150 });
             }
         });
@@ -249,6 +254,18 @@ const SetRowComponent = ({
         }
     }, [setId, onFillFromPR, completed]);
 
+    // Callbacks estáveis para KeyboardInput (evita recriar funções a cada render)
+    const handleKgChange = useCallback((val: string) => onUpdate(setId, 'kg', val), [setId, onUpdate]);
+    const handleRepsChange = useCallback((val: string) => onUpdate(setId, 'reps', val), [setId, onUpdate]);
+    const handleRirChange = useCallback((val: string) => onUpdate(setId, 'rir', val), [setId, onUpdate]);
+
+    // Auto-check ao sair do RIR via "Next" (se kg e reps preenchidos e não completado)
+    const handleRirLeave = useCallback(() => {
+        if (!completed && kg && kg.trim() !== '' && reps && reps.trim() !== '') {
+            handleToggle();
+        }
+    }, [completed, kg, reps, handleToggle]);
+
     // Formata PR: "20kg x 9 @ 2"
     const formatPR = useCallback(() => {
         if (!prData) return prev || '-';
@@ -357,7 +374,10 @@ const SetRowComponent = ({
                         style={{ opacity: fieldOpacity }}
                     >
                         <Text
-                            style={{ color: theme.text }}
+                            style={{
+                                color: isMatchedPR ? theme.textSecondary : theme.text,
+                                textDecorationLine: isMatchedPR ? 'line-through' : 'none',
+                            }}
                             className="text-xs text-center"
                         >
                             {formatPR()}
@@ -370,8 +390,8 @@ const SetRowComponent = ({
                             id={kgInputId}
                             value={kg}
                             placeholder={kgPlaceholder}
-                            onChange={(val) => onUpdate(setId, 'kg', val)}
-                            inputStep={2.5}
+                            onChange={handleKgChange}
+                            inputStep={0.5}
                             hasError={kgError}
                             icon={<Barbell size={12} color={kgError ? '#ef4444' : theme.textSecondary} weight="bold" />}
                             disabled={completed}
@@ -384,7 +404,7 @@ const SetRowComponent = ({
                             id={repsInputId}
                             value={reps}
                             placeholder={repsPlaceholder}
-                            onChange={(val) => onUpdate(setId, 'reps', val)}
+                            onChange={handleRepsChange}
                             inputStep={1}
                             hasError={repsError}
                             icon={<Repeat size={12} color={repsError ? '#ef4444' : theme.textSecondary} weight="bold" />}
@@ -399,11 +419,12 @@ const SetRowComponent = ({
                             id={rirInputId}
                             value={rir}
                             placeholder={rirPlaceholder}
-                            onChange={(val) => onUpdate(setId, 'rir', val)}
+                            onChange={handleRirChange}
                             inputStep={1}
                             icon={<Target size={12} color={theme.textSecondary} weight="bold" />}
                             keyboardType="number-pad"
                             disabled={completed}
+                            onLeave={handleRirLeave}
                         />
                     </View>
 

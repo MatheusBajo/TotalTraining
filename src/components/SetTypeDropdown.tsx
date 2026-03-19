@@ -14,17 +14,18 @@ export type SetType = 'N' | 'W' | 'D' | 'F' | 'R' | 'S';
 interface SetTypeOption {
     type: SetType;
     label: string;
+    description: string;
     color: string;
     letter: string;
 }
 
 const options: SetTypeOption[] = [
-    { type: 'N', label: 'Normal', color: '#9ca3af', letter: 'N' },
-    { type: 'W', label: 'Aquecimento', color: '#f59e0b', letter: 'W' },
-    { type: 'D', label: 'Drop set', color: '#a855f7', letter: 'D' },
-    { type: 'F', label: 'Falha', color: '#ef4444', letter: 'F' },
-    { type: 'R', label: 'Rest-Pause', color: '#06b6d4', letter: 'R' },
-    { type: 'S', label: 'Superset', color: '#10b981', letter: 'S' },
+    { type: 'N', label: 'Normal', description: 'Série normal de trabalho', color: '#9ca3af', letter: 'N' },
+    { type: 'W', label: 'Aquecimento', description: 'Série de aquecimento — não conta no volume', color: '#f59e0b', letter: 'W' },
+    { type: 'D', label: 'Drop set', description: 'Drop set — reduz peso sem descanso', color: '#a855f7', letter: 'D' },
+    { type: 'F', label: 'Falha', description: 'Série até a falha muscular', color: '#ef4444', letter: 'F' },
+    { type: 'R', label: 'Rest-Pause', description: 'Rest-Pause — pausa curta e continua', color: '#06b6d4', letter: 'R' },
+    { type: 'S', label: 'Superset', description: 'Superset — emparelha com próximo exercício', color: '#10b981', letter: 'S' },
 ];
 
 interface SetTypeDropdownProps {
@@ -54,6 +55,7 @@ export const SetTypeDropdown = ({ currentType, index, completed = false, disable
     const [modalVisible, setModalVisible] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
     const [position, setPosition] = useState({ x: 0, y: 0 });
+    const [expandedInfo, setExpandedInfo] = useState<SetType | null>(null);
     const buttonRef = useRef<View>(null);
 
     const opacity = useSharedValue(0);
@@ -69,6 +71,7 @@ export const SetTypeDropdown = ({ currentType, index, completed = false, disable
         buttonRef.current?.measureInWindow((x, y) => {
             setPosition({ x, y });
             setIsClosing(false);
+            setExpandedInfo(null);
             setModalVisible(true);
         });
     }, [disabled]);
@@ -84,6 +87,7 @@ export const SetTypeDropdown = ({ currentType, index, completed = false, disable
     const closeModal = useCallback(() => {
         setModalVisible(false);
         setIsClosing(false);
+        setExpandedInfo(null);
     }, []);
 
     const startClosing = useCallback(() => {
@@ -104,6 +108,10 @@ export const SetTypeDropdown = ({ currentType, index, completed = false, disable
     const handleClose = useCallback(() => {
         startClosing();
     }, [startClosing]);
+
+    const handleToggleInfo = useCallback((type: SetType) => {
+        setExpandedInfo(prev => prev === type ? null : type);
+    }, []);
 
     const backdropStyle = useAnimatedStyle(() => ({
         opacity: opacity.value * 0.8,
@@ -153,20 +161,39 @@ export const SetTypeDropdown = ({ currentType, index, completed = false, disable
                     ]}
                 >
                     {options.map((opt) => (
-                        <Pressable
-                            key={opt.type}
-                            style={styles.option}
-                            onPress={() => handleSelect(opt.type)}
-                            android_ripple={{ color: 'rgba(255,255,255,0.1)' }}
-                        >
-                            <Text style={[styles.optionLetter, { color: opt.color }]}>
-                                {opt.letter}
-                            </Text>
-                            <Text style={[styles.optionLabel, { color: theme.text }]}>
-                                {opt.label}
-                            </Text>
-                            <Question size={16} color={theme.textSecondary} />
-                        </Pressable>
+                        <View key={opt.type}>
+                            <View style={styles.optionRow}>
+                                <Pressable
+                                    style={styles.option}
+                                    onPress={() => handleSelect(opt.type)}
+                                    android_ripple={{ color: 'rgba(255,255,255,0.1)' }}
+                                >
+                                    <Text style={[styles.optionLetter, { color: opt.color }]}>
+                                        {opt.letter}
+                                    </Text>
+                                    <Text style={[styles.optionLabel, { color: theme.text }]}>
+                                        {opt.label}
+                                    </Text>
+                                </Pressable>
+                                <Pressable
+                                    onPress={() => handleToggleInfo(opt.type)}
+                                    style={styles.questionButton}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                    <Question
+                                        size={16}
+                                        color={expandedInfo === opt.type ? opt.color : theme.textSecondary}
+                                    />
+                                </Pressable>
+                            </View>
+                            {expandedInfo === opt.type && (
+                                <View style={[styles.descriptionContainer, { backgroundColor: opt.color + '15' }]}>
+                                    <Text style={[styles.descriptionText, { color: theme.textSecondary }]}>
+                                        {opt.description}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
                     ))}
                 </Animated.View>
             </Modal>
@@ -196,7 +223,7 @@ const styles = StyleSheet.create({
     },
     dropdown: {
         position: 'absolute',
-        minWidth: 170,
+        minWidth: 200,
         borderRadius: 10,
         paddingVertical: 6,
         shadowColor: '#FFF',
@@ -205,9 +232,18 @@ const styles = StyleSheet.create({
         shadowRadius: 18,
         elevation: 8,
     },
-    option: {
+    optionRow: {
         flexDirection: 'row',
         alignItems: 'center',
+    },
+    option: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+    },
+    questionButton: {
         paddingVertical: 10,
         paddingHorizontal: 12,
     },
@@ -220,5 +256,16 @@ const styles = StyleSheet.create({
         flex: 1,
         fontSize: 14,
         fontWeight: '700',
+    },
+    descriptionContainer: {
+        marginHorizontal: 12,
+        marginBottom: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 6,
+    },
+    descriptionText: {
+        fontSize: 12,
+        lineHeight: 16,
     },
 });

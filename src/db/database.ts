@@ -20,6 +20,35 @@ export async function initDatabase(): Promise<void> {
         // Migrations para bancos existentes
         await runMigrations(db);
 
+        // Cleanup: remove treinos abandonados (não finalizados há mais de 24h, SEM remote_id)
+        // Treinos com remote_id são gerenciados pelo sync — não deletar aqui
+        await db.runAsync(
+            `DELETE FROM sets WHERE exercise_id IN (
+                SELECT e.id FROM exercises e
+                JOIN workouts w ON e.workout_id = w.id
+                WHERE w.finished_at IS NULL AND w.started_at IS NOT NULL
+                AND w.remote_id IS NULL
+                AND datetime(w.started_at) < datetime('now', '-1 day')
+            )`
+        );
+        await db.runAsync(
+            `DELETE FROM exercises WHERE workout_id IN (
+                SELECT id FROM workouts
+                WHERE finished_at IS NULL AND started_at IS NOT NULL
+                AND remote_id IS NULL
+                AND datetime(started_at) < datetime('now', '-1 day')
+            )`
+        );
+        const cleanup = await db.runAsync(
+            `DELETE FROM workouts
+             WHERE finished_at IS NULL AND started_at IS NOT NULL
+             AND remote_id IS NULL
+             AND datetime(started_at) < datetime('now', '-1 day')`
+        );
+        if (cleanup.changes > 0) {
+            console.log(`[DB] Cleaned up ${cleanup.changes} abandoned workout(s)`);
+        }
+
         console.log('[DB] Database initialized successfully');
     } catch (error) {
         console.error('[DB] Error initializing database:', error);
@@ -154,14 +183,16 @@ export async function updateLocalWorkout(id: number, data: Partial<{
 export async function deleteLocalWorkout(id: number): Promise<void> {
     const database = getDatabase();
 
-    // Se nunca foi sincronizado (remote_id é null), deleta direto
     const workout = await getLocalWorkout(id);
     if (!workout) return;
 
-    if (workout.remote_id === null) {
+    // Treinos NÃO finalizados (cancelados) ou nunca sincronizados → DELETE direto
+    // Treinos finalizados com remote_id → marca para sync delete
+    if (!workout.finished_at || workout.remote_id === null) {
+        await database.runAsync('DELETE FROM sets WHERE exercise_id IN (SELECT id FROM exercises WHERE workout_id = ?)', [id]);
+        await database.runAsync('DELETE FROM exercises WHERE workout_id = ?', [id]);
         await database.runAsync('DELETE FROM workouts WHERE id = ?', [id]);
     } else {
-        // Marca para delete no sync
         await database.runAsync(
             `UPDATE workouts SET sync_status = 'pending', sync_action = 'delete' WHERE id = ?`,
             [id]
@@ -512,6 +543,142 @@ export async function getLastFinishedWorkoutLocal(userId: string): Promise<Local
         [userId]
     );
     return result || null;
+}
+
+// ==================== EXERCISE HISTORY & RECORDS ====================
+
+export interface ExerciseHistoryEntry {
+    workoutId: number;
+    workoutName: string;
+    workoutDate: string;
+    sets: {
+        orderIndex: number;
+        setType: string;
+        weight: number | null;
+        reps: number | null;
+        rir: number | null;
+        completed: boolean;
+    }[];
+}
+
+/**
+ * Retorna o histórico de um exercício agrupado por treino/data
+ */
+export async function getExerciseHistoryLocal(
+    userId: string,
+    exerciseName: string,
+    limit: number = 20
+): Promise<ExerciseHistoryEntry[]> {
+    const database = getDatabase();
+
+    const rows = await database.getAllAsync<{
+        workout_id: number;
+        workout_name: string;
+        workout_date: string;
+        order_index: number;
+        set_type: string;
+        weight: number | null;
+        reps: number | null;
+        rir: number | null;
+        completed: number;
+    }>(
+        `SELECT
+            w.id as workout_id,
+            w.name as workout_name,
+            w.date as workout_date,
+            s.order_index,
+            s.set_type,
+            s.weight,
+            s.reps,
+            s.rir,
+            s.completed
+        FROM workouts w
+        JOIN exercises e ON e.workout_id = w.id
+        JOIN sets s ON s.exercise_id = e.id
+        WHERE w.user_id = ?
+          AND e.exercise_name = ?
+          AND w.finished_at IS NOT NULL
+          AND (w.sync_action IS NULL OR w.sync_action != 'delete')
+          AND (e.sync_action IS NULL OR e.sync_action != 'delete')
+          AND (s.sync_action IS NULL OR s.sync_action != 'delete')
+        ORDER BY w.date DESC, w.id DESC, s.order_index ASC`,
+        [userId, exerciseName]
+    );
+
+    // Agrupa por workout
+    const grouped = new Map<number, ExerciseHistoryEntry>();
+    for (const row of rows) {
+        if (!grouped.has(row.workout_id)) {
+            grouped.set(row.workout_id, {
+                workoutId: row.workout_id,
+                workoutName: row.workout_name,
+                workoutDate: row.workout_date,
+                sets: [],
+            });
+        }
+        grouped.get(row.workout_id)!.sets.push({
+            orderIndex: row.order_index,
+            setType: row.set_type,
+            weight: row.weight,
+            reps: row.reps,
+            rir: row.rir,
+            completed: row.completed === 1,
+        });
+    }
+
+    return Array.from(grouped.values()).slice(0, limit);
+}
+
+export interface ExerciseRecord {
+    reps: number;
+    weight: number;
+    rir: number | null;
+    date: string;
+}
+
+/**
+ * Retorna os melhores PRs por número de repetições
+ */
+export async function getExerciseRecordsLocal(
+    userId: string,
+    exerciseName: string
+): Promise<ExerciseRecord[]> {
+    const database = getDatabase();
+
+    const rows = await database.getAllAsync<{
+        reps: number;
+        weight: number;
+        rir: number | null;
+        workout_date: string;
+    }>(
+        `SELECT
+            s.reps,
+            MAX(s.weight) as weight,
+            s.rir,
+            w.date as workout_date
+        FROM workouts w
+        JOIN exercises e ON e.workout_id = w.id
+        JOIN sets s ON s.exercise_id = e.id
+        WHERE w.user_id = ?
+          AND e.exercise_name = ?
+          AND w.finished_at IS NOT NULL
+          AND s.weight IS NOT NULL
+          AND s.reps IS NOT NULL
+          AND s.completed = 1
+          AND (w.sync_action IS NULL OR w.sync_action != 'delete')
+          AND (e.sync_action IS NULL OR e.sync_action != 'delete')
+          AND (s.sync_action IS NULL OR s.sync_action != 'delete')
+        GROUP BY s.reps
+        ORDER BY s.reps ASC`,
+        [userId, exerciseName]
+    );
+
+    return rows.map(r => ({
+        reps: r.reps,
+        weight: r.weight,
+        rir: r.rir,
+        date: r.workout_date,
+    }));
 }
 
 // ==================== CLEANUP ====================

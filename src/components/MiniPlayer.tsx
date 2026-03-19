@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Animated, {
     useAnimatedStyle,
@@ -7,30 +7,37 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
-import { useWorkout } from '../context/WorkoutContext';
+import { useWorkoutTimer, useWorkoutMeta, useWorkoutActions } from '../context/WorkoutContext';
 import { useSheetAnimation } from '../context/SheetAnimationContext';
 
 const MINI_PLAYER_HEIGHT = 60;
 const TAB_BAR_HEIGHT = 60;
 
+// Timer isolado para evitar re-render do MiniPlayer inteiro a cada segundo
+const MiniPlayerTimerText = memo(({ style }: { style?: any }) => {
+    const { duration } = useWorkoutTimer();
+    const formatTime = (seconds: number) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+    return <Text style={style}>{formatTime(duration)}</Text>;
+});
+
 export const MiniPlayer = () => {
     const { theme } = useTheme();
     const insets = useSafeAreaInsets();
     const { animatedPosition, screenHeight } = useSheetAnimation();
-    const { isActive, isMinimized, workoutName, duration, maximizeWorkout } = useWorkout();
+
+    // Optimized: only subscribes to meta, not exercises - doesn't re-render on set updates
+    const { isActive, workoutName } = useWorkoutMeta();
+    const { maximizeWorkout } = useWorkoutActions(); // Never re-renders
 
     const navbarHeight = TAB_BAR_HEIGHT + insets.bottom;
 
     // Posições
     const expandedSnapPoint = screenHeight - insets.top - 20;
     const expandedPosition = screenHeight - expandedSnapPoint;
-    const minimizedPosition = screenHeight; // Quando minimizado, sheet está "fechado"
-
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    };
 
     // Animar opacity baseado na posição do sheet
     // Quando sheet expandido (pos baixo) -> mini-player invisível
@@ -81,7 +88,7 @@ export const MiniPlayer = () => {
             >
                 <View style={styles.handle} />
                 <Text style={[styles.title, { color: theme.text }]}>{workoutName}</Text>
-                <Text style={[styles.timer, { color: theme.primary }]}>{formatTime(duration)}</Text>
+                <MiniPlayerTimerText style={[styles.timer, { color: theme.primary }]} />
             </TouchableOpacity>
         </Animated.View>
     );

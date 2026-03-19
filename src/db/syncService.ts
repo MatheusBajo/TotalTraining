@@ -16,9 +16,12 @@ import { AppState, AppStateStatus } from 'react-native';
 let isSyncing = false;
 let syncInterval: NodeJS.Timeout | null = null;
 let lastSyncTime: number = 0;
+let retryCount = 0;
+let retryTimeout: NodeJS.Timeout | null = null;
 
 const SYNC_INTERVAL_MS = 30000; // 30 segundos
 const MIN_SYNC_INTERVAL_MS = 5000; // 5 segundos entre syncs
+const MAX_RETRIES = 3;
 
 // Inicia o serviço de sync
 export function startSyncService(userId?: string): void {
@@ -46,16 +49,18 @@ export function stopSyncService(): void {
         clearInterval(syncInterval);
         syncInterval = null;
     }
+    if (retryTimeout) {
+        clearTimeout(retryTimeout);
+        retryTimeout = null;
+    }
+    retryCount = 0;
 }
 
-// Handler para mudança de estado do app
-// REMOVIDO: Sync quando app volta ao foco causava problemas durante treino ativo
-// O sync agora só acontece:
-// - Periodicamente (a cada 30s)
-// - Quando treino é FINALIZADO
-// - Quando treino é CANCELADO
+// Sync quando app volta ao foco (background → foreground)
 function handleAppStateChange(nextState: AppStateStatus): void {
-    // Não faz nada - sync periódico já cuida disso
+    if (nextState === 'active') {
+        triggerSync();
+    }
 }
 
 // Dispara sync (com debounce)
@@ -84,8 +89,21 @@ export async function triggerSync(): Promise<void> {
 
     try {
         await performSync(user.id);
-    } catch (error) {
-        console.error('[Sync] Error during sync:', error);
+        retryCount = 0; // Reset on success
+    } catch (error: any) {
+        const isNetworkError = error?.message?.includes('Network') || error?.message?.includes('fetch');
+        console.error('[Sync] Error during sync:', isNetworkError ? 'Network error' : error);
+
+        if (isNetworkError && retryCount < MAX_RETRIES) {
+            retryCount++;
+            const delay = retryCount * 5000; // 5s, 10s, 15s
+            console.log(`[Sync] Retrying in ${delay / 1000}s (attempt ${retryCount}/${MAX_RETRIES})`);
+            if (retryTimeout) clearTimeout(retryTimeout);
+            retryTimeout = setTimeout(() => {
+                retryTimeout = null;
+                triggerSync();
+            }, delay);
+        }
     } finally {
         isSyncing = false;
     }
@@ -122,9 +140,12 @@ async function performSync(userId: string): Promise<void> {
             await syncCreateWorkout(workout);
         } else if (workout.sync_action === 'update') {
             await syncUpdateWorkout(workout);
-        } else if (workout.sync_action === 'delete' && !activeWorkout) {
-            // Só deleta se NÃO tem treino ativo
-            await syncDeleteWorkout(workout);
+        } else if (workout.sync_action === 'delete') {
+            // Treinos não finalizados (cancelados) podem ser deletados sempre
+            // Treinos finalizados só deletam se não tem treino ativo (segurança)
+            if (!workout.finished_at || !activeWorkout) {
+                await syncDeleteWorkout(workout);
+            }
         }
     }
 
@@ -463,11 +484,12 @@ export async function pullFromRemote(userId: string): Promise<void> {
     const db = getDatabase();
 
     try {
-        // 1. Busca todos os workouts do usuário
+        // 1. Busca workouts FINALIZADOS do usuário (não puxa treinos incompletos do remote)
         const { data: workouts, error: workoutsError } = await supabase
             .from('workouts')
             .select('*')
             .eq('user_id', userId)
+            .not('finished_at', 'is', null)
             .order('date', { ascending: false });
 
         if (workoutsError) throw workoutsError;
