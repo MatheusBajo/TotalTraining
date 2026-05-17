@@ -18,6 +18,7 @@ import { MiniPlayer } from './src/components/MiniPlayer';
 import { ActiveWorkoutModal } from './src/components/ActiveWorkoutModal';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { DevProvider } from './src/context/DevContext';
+import { PlanProvider } from './src/context/PlanContext';
 import LoginScreen from './src/screens/Auth/LoginScreen';
 
 // Database & Sync
@@ -113,6 +114,7 @@ function AppContent() {
   }
 
   return (
+    <PlanProvider>
     <WorkoutProvider>
       <SheetAnimationProvider>
         <SafeAreaProvider>
@@ -128,6 +130,7 @@ function AppContent() {
         </SafeAreaProvider>
       </SheetAnimationProvider>
     </WorkoutProvider>
+    </PlanProvider>
   );
 }
 

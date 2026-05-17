@@ -33,6 +33,7 @@ export interface Exercicio {
     rir?: number;
     descanso?: string;
     notas?: string;
+    alternativas?: string[];
 }
 
 // Tipos para treino registrado (histórico)
@@ -67,9 +68,11 @@ export interface TemplateTreino {
 export interface PlanoTreino {
     id: string;
     nome: string;
+    objetivo?: string;
     descricao: string;
     criadoEm: string;
     proximaRevisao: string;
+    isActive?: boolean;
     estruturaSemanal: {
         dia: string;
         treino: string;

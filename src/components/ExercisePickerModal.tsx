@@ -230,8 +230,9 @@ export const ExercisePickerModal = ({
         <Modal
             visible={visible}
             animationType="slide"
-            presentationStyle="pageSheet"
+            transparent
             onRequestClose={onClose}
+            statusBarTranslucent
         >
             <View style={{ backgroundColor: theme.background, flex: 1, paddingTop: insets.top }}>
                 {/* Header */}

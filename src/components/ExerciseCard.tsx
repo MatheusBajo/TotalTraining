@@ -1,10 +1,12 @@
-import React, { memo, useCallback, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import React, { memo, useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import { View, Text, TouchableOpacity, Alert, TextInput } from 'react-native';
 import { useTheme } from '../theme';
 // CaretUp removido — nome do exercício agora abre ExerciseDetailModal
 import { SetRow } from './SetRow';
 import { SetType } from './SetTypeModal';
 import { ActionDropdown, DropdownOption } from './ActionDropdown';
+import { PencilSimpleLine } from 'phosphor-react-native';
+import { CoreHaptics } from 'expo-core-haptics';
 
 interface ExerciseSet {
     id: string;
@@ -37,7 +39,10 @@ interface ExerciseCardProps {
     onRemoveSet?: (exerciseId: string, setId: string) => void;
     onToggleSuperset?: (exerciseId: string) => void;
     onRemoveExercise?: (exerciseId: string) => void;
+    onUpdateNotes?: (exerciseId: string, notes: string) => void;
+    onSwitchAlternative?: (exerciseId: string, newName: string) => void;
     notes?: string;
+    alternativas?: string[];
     isSuperset?: boolean;
     supersetPosition?: 'first' | 'last' | 'middle';
     isSupersetLinkedWithNext?: boolean;
@@ -57,12 +62,47 @@ const ExerciseCardComponent = ({
     onRemoveSet,
     onToggleSuperset,
     onRemoveExercise,
+    onUpdateNotes,
+    onSwitchAlternative,
     notes,
+    alternativas,
     isSuperset = false,
     supersetPosition,
     isSupersetLinkedWithNext = false,
 }: ExerciseCardProps) => {
     const { theme } = useTheme();
+    const [showNoteInput, setShowNoteInput] = useState(false);
+    const [localNote, setLocalNote] = useState(notes || '');
+    const noteInputRef = useRef<TextInput>(null);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const localNoteRef = useRef(localNote);
+    localNoteRef.current = localNote;
+
+    // Sync localNote com prop notes (ex: após restauração)
+    useEffect(() => {
+        if (!showNoteInput) {
+            setLocalNote(notes || '');
+        }
+    }, [notes]);
+
+    // Salva nota com debounce ao digitar (protege contra app fechar sem onBlur)
+    const handleNoteChange = useCallback((text: string) => {
+        setLocalNote(text);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+            onUpdateNotes?.(exerciseId, text);
+        }, 500);
+    }, [exerciseId, onUpdateNotes]);
+
+    // Flush nota pendente no unmount
+    useEffect(() => {
+        return () => {
+            if (debounceRef.current) {
+                clearTimeout(debounceRef.current);
+                onUpdateNotes?.(exerciseId, localNoteRef.current);
+            }
+        };
+    }, [exerciseId, onUpdateNotes]);
 
     // Memoiza callbacks
     const handleAddSet = useCallback(() => {
@@ -129,11 +169,12 @@ const ExerciseCardComponent = ({
         const options: DropdownOption[] = [
             {
                 id: 'note',
-                label: 'Adicionar nota',
+                label: notes ? 'Editar nota' : 'Adicionar nota',
                 icon: 'note',
                 onPress: () => {
-                    // TODO: Implementar modal de nota
-                    Alert.alert('Em breve', 'Notas serão implementadas em breve!');
+                    setShowNoteInput(true);
+                    setLocalNote(notes || '');
+                    setTimeout(() => noteInputRef.current?.focus(), 100);
                 },
             },
             {
@@ -262,11 +303,88 @@ const ExerciseCardComponent = ({
                 </View>
             </View>
 
-            {/* Notas do exercício */}
-            {notes ? (
-                <View style={{ backgroundColor: '#fef3c7', marginHorizontal: 16, marginBottom: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
-                    <Text style={{ color: '#92400e', fontSize: 12 }}>{notes}</Text>
+            {/* Alternativas (tabs para trocar exercício equivalente) */}
+            {alternativas && alternativas.length > 1 && (
+                <View style={{ flexDirection: 'row', gap: 6, marginHorizontal: 16, marginBottom: 8 }}>
+                    {alternativas.map((alt) => {
+                        const isSelected = alt === name;
+                        return (
+                            <TouchableOpacity
+                                key={alt}
+                                style={{
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 5,
+                                    borderRadius: 8,
+                                    backgroundColor: isSelected ? theme.primary : theme.field,
+                                }}
+                                activeOpacity={0.7}
+                                onPress={() => {
+                                    if (!isSelected && onSwitchAlternative) {
+                                        if (CoreHaptics.isSupported()) {
+                                            CoreHaptics.tap.light();
+                                        }
+                                        onSwitchAlternative(exerciseId, alt);
+                                    }
+                                }}
+                            >
+                                <Text style={{
+                                    fontSize: 12,
+                                    fontWeight: '700',
+                                    color: isSelected ? '#fff' : theme.textSecondary,
+                                }}>
+                                    {alt}
+                                </Text>
+                            </TouchableOpacity>
+                        );
+                    })}
                 </View>
+            )}
+
+            {/* Notas do exercício - estilo Strong */}
+            {(notes || showNoteInput) ? (
+                <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => {
+                        setShowNoteInput(true);
+                        setLocalNote(notes || '');
+                        setTimeout(() => noteInputRef.current?.focus(), 100);
+                    }}
+                    style={{
+                        backgroundColor: '#5d5832',
+                        marginHorizontal: 0,
+                        paddingHorizontal: 16,
+                        paddingVertical: 8,
+                        borderBottomWidth: 1,
+                        borderBottomColor: '#edbf26',
+                        marginBottom: 8,
+                    }}
+                >
+                    {showNoteInput ? (
+                        <TextInput
+                            ref={noteInputRef}
+                            value={localNote}
+                            onChangeText={handleNoteChange}
+                            onBlur={() => {
+                                // Cancela debounce pendente e salva imediatamente
+                                if (debounceRef.current) clearTimeout(debounceRef.current);
+                                setShowNoteInput(false);
+                                onUpdateNotes?.(exerciseId, localNote);
+                            }}
+                            placeholder="Adicionar nota..."
+                            placeholderTextColor="#edbf2680"
+                            style={{
+                                color: '#edbf26',
+                                fontSize: 14,
+                                padding: 0,
+                                minHeight: 20,
+                            }}
+                            multiline
+                            autoFocus
+                        />
+                    ) : (
+                        <Text style={{ color: '#edbf26', fontSize: 14 }}>{notes}</Text>
+                    )}
+                </TouchableOpacity>
             ) : null}
 
             {/* Column Headers */}

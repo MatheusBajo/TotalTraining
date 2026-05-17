@@ -55,6 +55,7 @@ interface WorkoutExercise {
     name: string;
     sets: WorkoutSet[];
     notes?: string;
+    alternativas?: string[];
     supersetWith?: number; // localId do exercício com que está em superset
 }
 
@@ -115,6 +116,8 @@ interface WorkoutActionsContextData {
     removeExercise: (exerciseId: string) => Promise<void>;
     removeSet: (exerciseId: string, setId: string) => Promise<void>;
     toggleSuperset: (exerciseId: string) => void;
+    updateExerciseNotes: (exerciseId: string, notes: string) => void;
+    switchAlternative: (exerciseId: string, newName: string) => Promise<void>;
     getStartedAt: () => number | null;
     updateWorkoutName: (name: string) => void;
 }
@@ -245,6 +248,7 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
 
             // Busca exercícios
             const exercisesFromDb = await getExercisesByWorkout(activeWorkout.id);
+            console.log(`[WorkoutContext] DEBUG exercises from DB:`, exercisesFromDb.map(ex => ({ name: ex.exercise_name, notes: ex.notes, id: ex.id })));
 
             // Busca PRs para todos os exercícios de uma vez
             const exerciseNames = exercisesFromDb.map(ex => ex.exercise_name);
@@ -299,6 +303,8 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
                     name: ex.exercise_name,
                     sets: workoutSets,
                     supersetWith: ex.superset_with || undefined,
+                    notes: ex.notes || undefined,
+                    alternativas: ex.alternativas ? JSON.parse(ex.alternativas) : undefined,
                 });
             }
 
@@ -425,7 +431,7 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
                 numSets: typeof ex.series === 'number' ? ex.series : 3,
                 targetReps: ex.reps,
                 targetRir: ex.rir,
-                notas: ex.notas,
+                alternativas: ex.alternativas,
             })) || [];
 
             // 3. Busca PRs locais (instantâneo!)
@@ -447,6 +453,13 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
                     exercise_name: exData.name,
                     order_index: i,
                 });
+
+                // Salva alternativas no DB se existirem
+                if (exData.alternativas?.length) {
+                    await updateLocalExercise(localExerciseId, {
+                        alternativas: JSON.stringify(exData.alternativas),
+                    });
+                }
 
                 // Guarda mapeamento templateId -> localId
                 if (exData.templateId) {
@@ -500,7 +513,7 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
                     localId: localExerciseId,
                     name: exData.name,
                     sets,
-                    notes: exData.notas,
+                    alternativas: exData.alternativas,
                     // supersetWith será preenchido depois
                 });
             }
@@ -605,7 +618,18 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
                 duration_seconds: duration,
             });
 
-            // 2. Atualiza todas as séries LOCAL (try/catch individual para não crashar se set foi deletado)
+            // 2. Salva notas dos exercícios no SQLite
+            for (const exercise of currentExercises) {
+                if (exercise.notes) {
+                    try {
+                        await updateLocalExercise(exercise.localId, { notes: exercise.notes });
+                    } catch (noteError) {
+                        console.warn(`[WorkoutContext] Skipping notes for exercise ${exercise.localId}:`, noteError);
+                    }
+                }
+            }
+
+            // 3. Atualiza todas as séries LOCAL (try/catch individual para não crashar se set foi deletado)
             for (const exercise of currentExercises) {
                 for (const set of exercise.sets) {
                     try {
@@ -1035,6 +1059,63 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
         }
     }, []);
 
+    // ==================== UPDATE EXERCISE NOTES ====================
+
+    const updateExerciseNotes = useCallback((exerciseId: string, notes: string) => {
+        const exercise = exercisesRef.current.find(ex => ex.id === exerciseId);
+        exercisesRef.current = exercisesRef.current.map(ex =>
+            ex.id === exerciseId ? { ...ex, notes } : ex
+        );
+        setExercises(prev => prev.map(ex =>
+            ex.id === exerciseId ? { ...ex, notes } : ex
+        ));
+        // Salva no SQLite imediatamente
+        if (exercise) {
+            updateLocalExercise(exercise.localId, { notes: notes || '' }).catch(err =>
+                console.warn('[WorkoutContext] Error saving note:', err)
+            );
+        }
+    }, []);
+
+    // ==================== SWITCH ALTERNATIVE (muda nome, mantém sets) ====================
+
+    const switchAlternative = useCallback(async (exerciseId: string, newName: string) => {
+        const exercise = exercisesRef.current.find(ex => ex.id === exerciseId);
+        if (!exercise) return;
+
+        try {
+            await updateLocalExercise(exercise.localId, { exercise_name: newName });
+
+            // Busca PRs do novo exercício para atualizar "prev"
+            const prsData = userIdRef.current
+                ? await getPRsBatchLocal(userIdRef.current, [newName])
+                : {};
+            const exercisePRs = prsData[newName] || [];
+
+            const updater = (prev: WorkoutExercise[]) => prev.map(ex => {
+                if (ex.id !== exerciseId) return ex;
+                return {
+                    ...ex,
+                    name: newName,
+                    sets: ex.sets.map((s, idx) => {
+                        const setPR = exercisePRs.find(pr => pr.order_index === idx);
+                        return {
+                            ...s,
+                            prev: setPR ? `${setPR.weight}kg x ${setPR.reps}` : '-',
+                            prData: setPR ? { weight: setPR.weight, reps: setPR.reps, rir: setPR.rir } : undefined,
+                            // Mantém kg, reps, rir, completed — não reseta!
+                        };
+                    }),
+                };
+            });
+
+            exercisesRef.current = updater(exercisesRef.current);
+            setExercises(updater);
+        } catch (error) {
+            console.error('[WorkoutContext] Error switching alternative:', error);
+        }
+    }, []);
+
     // ==================== REMOVE SET ====================
 
     const removeSet = useCallback(async (exerciseId: string, setId: string) => {
@@ -1171,6 +1252,8 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
         removeExercise,
         removeSet,
         toggleSuperset,
+        updateExerciseNotes,
+        switchAlternative,
         getStartedAt,
         updateWorkoutName,
     }), [
@@ -1193,6 +1276,8 @@ export const WorkoutProvider = ({ children }: { children: React.ReactNode }) => 
         removeExercise,
         removeSet,
         toggleSuperset,
+        updateExerciseNotes,
+        switchAlternative,
         getStartedAt,
         updateWorkoutName,
     ]);

@@ -94,6 +94,7 @@ export const WorkoutDetailModal = ({ visible, workoutId, onClose, onWorkoutUpdat
         setLoading(true);
         try {
             const result = await getFullWorkout(workoutId);
+            console.log('[WorkoutDetailModal] exercises notes:', result?.exercises.map(e => ({ name: e.exercise_name, notes: e.notes })));
             setData(result as FullWorkoutData);
             setOriginalData(result as FullWorkoutData);
 
@@ -618,6 +619,15 @@ export const WorkoutDetailModal = ({ visible, workoutId, onClose, onWorkoutUpdat
                                     </Text>
                                 </View>
 
+                                {/* Exercise Notes */}
+                                {exercise.notes ? (
+                                    <View style={{ backgroundColor: '#5d5832', paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#edbf26' }}>
+                                        <Text style={{ color: '#edbf26', fontSize: 14, fontStyle: 'italic' }}>
+                                            {exercise.notes}
+                                        </Text>
+                                    </View>
+                                ) : null}
+
                                 {/* Column Headers */}
                                 <View className="flex-row px-4 py-2" style={{ backgroundColor: theme.background + '40' }}>
                                     <Text style={{ color: theme.textSecondary }} className="w-12 text-xs font-bold">
@@ -678,14 +688,6 @@ export const WorkoutDetailModal = ({ visible, workoutId, onClose, onWorkoutUpdat
                                     );
                                 })}
 
-                                {/* Exercise Notes */}
-                                {exercise.notes && (
-                                    <View className="px-4 py-2" style={{ backgroundColor: theme.background + '40' }}>
-                                        <Text style={{ color: theme.textSecondary }} className="text-sm italic">
-                                            {exercise.notes}
-                                        </Text>
-                                    </View>
-                                )}
                             </View>
                         ))}
 

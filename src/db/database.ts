@@ -72,6 +72,21 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
     } catch (error) {
         console.error('[DB] Migration error:', error);
     }
+
+    // Migration 2: Adiciona coluna alternativas na tabela exercises
+    try {
+        const tableInfo = await database.getAllAsync<{ name: string }>(
+            "PRAGMA table_info(exercises)"
+        );
+        const hasAlternativas = tableInfo.some(col => col.name === 'alternativas');
+
+        if (!hasAlternativas) {
+            await database.execAsync('ALTER TABLE exercises ADD COLUMN alternativas TEXT');
+            console.log('[DB] Migration: Added alternativas column to exercises');
+        }
+    } catch (error) {
+        console.error('[DB] Migration 2 error:', error);
+    }
 }
 
 // Retorna a instância do banco
@@ -234,6 +249,7 @@ export async function updateLocalExercise(id: number, data: Partial<{
     exercise_name: string;
     notes: string;
     superset_with: number | null;
+    alternativas: string;
 }>): Promise<void> {
     const database = getDatabase();
 
@@ -251,6 +267,10 @@ export async function updateLocalExercise(id: number, data: Partial<{
     if (data.superset_with !== undefined) {
         updates.push('superset_with = ?');
         values.push(data.superset_with);
+    }
+    if (data.alternativas !== undefined) {
+        updates.push('alternativas = ?');
+        values.push(data.alternativas);
     }
 
     if (updates.length === 0) return;

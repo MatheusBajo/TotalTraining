@@ -119,6 +119,7 @@ export interface LocalExercise {
     order_index: number;
     superset_with: number | null;
     notes: string | null;
+    alternativas: string | null;
     created_at: string;
     sync_status: 'synced' | 'pending' | 'error';
     sync_action: 'create' | 'update' | 'delete' | null;

@@ -299,13 +299,11 @@ export const ActionDropdown = ({
                             top: position.y,
                             left: position.x,
                             transformOrigin: getTransformOrigin(),
-                            maxHeight: Dimensions.get('window').height * 0.6,
-                            overflow: 'hidden',
                         },
                         dropdownStyle,
                     ]}
                 >
-                    <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
+                    <ScrollView bounces={false} showsVerticalScrollIndicator={false} style={{ maxHeight: Dimensions.get('window').height * 0.6 }}>
                     {options.map((opt, index) => {
                         const optColor = opt.destructive
                             ? '#ef4444'

@@ -4,12 +4,14 @@ import { Plus, Swap, Calendar, Lightning, Play, Timer, ArrowRight, Barbell, Bug 
 import { BlurView } from 'expo-blur';
 import { useTheme } from '../../theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { planoAtual, currentUser, treinoA, treinoB } from '../../data';
+import { currentUser } from '../../data';
 import { usePressAnimation } from '../../hooks';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 import { OptionsDropdown } from '../../components/OptionsDropdown';
 import { useWorkoutTimer, useWorkoutMeta, useWorkoutActions } from '../../context/WorkoutContext';
+import { usePlan } from '../../context/PlanContext';
+import { PlanHistoryModal } from '../../components/PlanHistoryModal';
 import { CoreHaptics } from 'expo-core-haptics';
 import { getLastFinishedWorkout } from '../../api';
 import { getDatabase } from '../../db/database';
@@ -102,13 +104,12 @@ const debugSupersets = async () => {
 };
 
 // Função para exportar plano completo como JSON
-const exportPlanAsJson = async () => {
+const exportPlanAsJson = async (plan: import('../../types').PlanoTreino) => {
     const exportData = {
-        nome: planoAtual.nome,
-        objetivo: planoAtual.objetivo,
-        frequenciaSemanal: planoAtual.frequenciaSemanal,
-        estruturaSemanal: planoAtual.estruturaSemanal,
-        templates: planoAtual.templates.map(template => ({
+        nome: plan.nome,
+        objetivo: plan.objetivo,
+        estruturaSemanal: plan.estruturaSemanal,
+        templates: plan.templates.map(template => ({
             nome: template.nome,
             dia: template.dia,
             focoPrincipal: template.focoPrincipal,
@@ -119,7 +120,7 @@ const exportPlanAsJson = async () => {
                 series: ex.series,
                 reps: ex.reps,
                 descanso: ex.descanso,
-                observacao: ex.observacao || null,
+                notas: ex.notas || null,
             })),
         })),
     };
@@ -129,13 +130,13 @@ const exportPlanAsJson = async () => {
 
     Alert.alert(
         'Plano Exportado!',
-        `"${planoAtual.nome}" copiado para a área de transferência.\n\nInclui ${planoAtual.templates.length} templates de treino.`,
+        `"${plan.nome}" copiado para a área de transferência.\n\nInclui ${plan.templates.length} templates de treino.`,
         [{ text: 'OK' }]
     );
 };
 
 // Função para exportar template como JSON
-const exportTemplateAsJson = async (template: typeof planoAtual.templates[0]) => {
+const exportTemplateAsJson = async (template: import('../../types').TemplateTreino) => {
     const exportData = {
         nome: template.nome,
         dia: template.dia,
@@ -257,11 +258,12 @@ const SmartWorkoutSuggestion = ({
 }: {
     delay?: number;
     animationKey: number;
-    onSelectWorkout: (template: typeof treinoA) => void;
+    onSelectWorkout: (template: import('../../types').TemplateTreino) => void;
 }) => {
     const { theme } = useTheme();
     const { onPressIn, onPressOut, animatedStyle: pressStyle } = usePressAnimation();
-    const [suggestedWorkout, setSuggestedWorkout] = useState<typeof treinoA | null>(null);
+    const { templates } = usePlan();
+    const [suggestedWorkout, setSuggestedWorkout] = useState<import('../../types').TemplateTreino | null>(null);
     const [lastWorkoutName, setLastWorkoutName] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -272,41 +274,38 @@ const SmartWorkoutSuggestion = ({
 
     // Busca o último treino e sugere o próximo
     useEffect(() => {
+        if (templates.length === 0) return;
+
         const fetchLastWorkout = async () => {
             setLoading(true);
             try {
                 const lastWorkout = await getLastFinishedWorkout();
+                const firstTemplate = templates[0];
+                const secondTemplate = templates.length > 1 ? templates[1] : templates[0];
 
                 if (lastWorkout) {
                     setLastWorkoutName(lastWorkout.name);
 
-                    // Lógica A/B: se último foi A, sugere B e vice-versa
-                    const wasA = lastWorkout.name?.toLowerCase().includes('treino a') ||
-                                 lastWorkout.name?.toLowerCase().includes('a');
-                    const wasB = lastWorkout.name?.toLowerCase().includes('treino b') ||
-                                 lastWorkout.name?.toLowerCase().includes('b');
-
-                    if (wasA) {
-                        setSuggestedWorkout(treinoB);
-                    } else if (wasB) {
-                        setSuggestedWorkout(treinoA);
-                    } else {
-                        setSuggestedWorkout(treinoA);
-                    }
+                    // Encontra o template que foi feito por último e sugere o próximo na lista
+                    const lastIdx = templates.findIndex(t =>
+                        lastWorkout.name?.toLowerCase().includes(t.nome.toLowerCase())
+                    );
+                    const nextIdx = lastIdx >= 0 ? (lastIdx + 1) % templates.length : 0;
+                    setSuggestedWorkout(templates[nextIdx]);
                 } else {
-                    setSuggestedWorkout(treinoA);
+                    setSuggestedWorkout(firstTemplate);
                     setLastWorkoutName(null);
                 }
             } catch (error) {
                 console.error('[SmartWorkout] Error:', error);
-                setSuggestedWorkout(treinoA);
+                setSuggestedWorkout(templates[0]);
             } finally {
                 setLoading(false);
             }
         };
 
         fetchLastWorkout();
-    }, [animationKey]);
+    }, [animationKey, templates]);
 
     // Animação de entrada + glow pulsante
     useEffect(() => {
@@ -411,6 +410,7 @@ const TodayWorkoutCard = ({
     const { isActive, workoutName } = useWorkoutMeta();
     const { requestStartWorkout } = useWorkoutActions();
     const { onPressIn, onPressOut, animatedStyle: pressStyle } = usePressAnimation();
+    const { activePlan } = usePlan();
 
     // Animações
     const cardOpacity = useSharedValue(0);
@@ -422,13 +422,13 @@ const TodayWorkoutCard = ({
     const diasSemana = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
     const diaHoje = diasSemana[hoje.getDay()];
 
-    const proximoTreino = planoAtual.estruturaSemanal.find(
+    const proximoTreino = activePlan.estruturaSemanal.find(
         dia => dia.dia === diaHoje && dia.treino !== 'Descanso' && dia.treino !== 'Futebol'
-    ) || planoAtual.estruturaSemanal.find(
+    ) || activePlan.estruturaSemanal.find(
         dia => dia.treino !== 'Descanso' && dia.treino !== 'Futebol'
     );
 
-    const template = planoAtual.templates.find(t => t.nome === proximoTreino?.treino);
+    const template = activePlan.templates.find(t => t.nome === proximoTreino?.treino);
 
     useEffect(() => {
         // Reset animações
@@ -554,7 +554,7 @@ const PlanTemplateCard = ({
     delay = 0,
     animationKey,
 }: {
-    template: typeof planoAtual.templates[0];
+    template: import('../../types').TemplateTreino;
     onPress?: () => void;
     delay?: number;
     animationKey: number;
@@ -633,6 +633,7 @@ const PlanTemplateCard = ({
 // Seção da semana animada
 const WeekSection = ({ delay = 0, animationKey }: { delay?: number; animationKey: number }) => {
     const { theme } = useTheme();
+    const { activePlan } = usePlan();
 
     const sectionOpacity = useSharedValue(0);
     const sectionTranslateY = useSharedValue(15);
@@ -665,7 +666,7 @@ const WeekSection = ({ delay = 0, animationKey }: { delay?: number; animationKey
                             id: 'export-all',
                             label: 'Exportar como JSON',
                             icon: 'export',
-                            onPress: exportPlanAsJson,
+                            onPress: () => exportPlanAsJson(activePlan),
                         },
                     ]}
                     iconSize={20}
@@ -673,12 +674,12 @@ const WeekSection = ({ delay = 0, animationKey }: { delay?: number; animationKey
             </View>
 
             <View style={[styles.weekCard, { backgroundColor: theme.surface }]}>
-                {planoAtual.estruturaSemanal.map((dia, index) => (
+                {activePlan.estruturaSemanal.map((dia, index) => (
                     <View
                         key={index}
                         style={[
                             styles.weekRow,
-                            index < planoAtual.estruturaSemanal.length - 1 && {
+                            index < activePlan.estruturaSemanal.length - 1 && {
                                 borderBottomWidth: StyleSheet.hairlineWidth,
                                 borderColor: theme.borderSubtle
                             }
@@ -747,6 +748,7 @@ const EmptyWorkoutButton = ({ delay = 0, animationKey }: { delay?: number; anima
 // Cabeçalho de templates animado
 const TemplatesHeader = ({ delay = 0, animationKey }: { delay?: number; animationKey: number }) => {
     const { theme } = useTheme();
+    const { templates } = usePlan();
 
     const opacity = useSharedValue(0);
     const translateY = useSharedValue(12);
@@ -767,7 +769,7 @@ const TemplatesHeader = ({ delay = 0, animationKey }: { delay?: number; animatio
     return (
         <Animated.View style={[style, styles.templatesHeader]}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                Treinos ({planoAtual.templates.length})
+                Treinos ({templates.length})
             </Text>
             <TouchableOpacity style={[styles.newButton, { backgroundColor: theme.surface }]}>
                 <Plus size={16} color={theme.primary} weight="bold" />
@@ -781,7 +783,9 @@ export const HomeScreen = () => {
     const { theme, toggleTheme } = useTheme();
     const { requestStartWorkout } = useWorkoutActions(); // Only needs actions, never re-renders on timer
     const { isActive } = useWorkoutMeta();
+    const { activePlan, templates } = usePlan();
     const scrollRef = useRef<Animated.ScrollView>(null);
+    const [showPlanHistory, setShowPlanHistory] = useState(false);
 
     // Key que muda quando a tela ganha foco - força reset das animações
     const [animationKey, setAnimationKey] = useState(0);
@@ -835,9 +839,11 @@ export const HomeScreen = () => {
         <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
             {/* Fixed Header */}
             <Animated.View style={[styles.header, headerStyle, { backgroundColor: theme.background }]}>
-                <Text style={[styles.planName, { color: theme.primary }]}>
-                    {planoAtual.nome}
-                </Text>
+                <TouchableOpacity onPress={() => setShowPlanHistory(true)} activeOpacity={0.7}>
+                    <Text style={[styles.planName, { color: theme.primary }]}>
+                        {activePlan.nome}
+                    </Text>
+                </TouchableOpacity>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                     <TouchableOpacity
                         onPress={debugSupersets}
@@ -893,7 +899,7 @@ export const HomeScreen = () => {
                 {/* Templates */}
                 <TemplatesHeader delay={380} animationKey={animationKey} />
 
-                {planoAtual.templates.map((template, index) => (
+                {templates.map((template, index) => (
                     <PlanTemplateCard
                         key={template.nome}
                         template={template}
@@ -910,6 +916,11 @@ export const HomeScreen = () => {
 
                 <View style={styles.bottomSpacer} />
             </Animated.ScrollView>
+
+            <PlanHistoryModal
+                visible={showPlanHistory}
+                onClose={() => setShowPlanHistory(false)}
+            />
         </SafeAreaView>
     );
 };

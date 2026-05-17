@@ -188,6 +188,7 @@ interface ExerciseWithSupersetInfo {
     name: string;
     sets: any[];
     notes?: string;
+    alternativas?: string[];
     supersetWith?: number;
     // Info pré-calculada de superset
     _source: any; // Referência original do exercício para cache comparison
@@ -213,6 +214,8 @@ const WorkoutContent = memo(({
     handleRemoveSet,
     handleToggleSuperset,
     handleRemoveExercise,
+    handleUpdateNotes,
+    handleSwitchAlternative,
     handleAddExercise,
     handleCancel,
     handleShowExercisePicker,
@@ -232,6 +235,8 @@ const WorkoutContent = memo(({
                 _currentOffset: 0,
                 scrollToOffset(opts: { offset: number; animated?: boolean }) {
                     ref.scrollToOffset?.(opts);
+                    // Atualiza offset imediatamente para evitar stale value em chamadas subsequentes
+                    this._currentOffset = opts.offset;
                 },
             };
             scrollWrapperRef.current = wrapper;
@@ -330,13 +335,16 @@ const WorkoutContent = memo(({
                 onRemoveSet={handleRemoveSet}
                 onToggleSuperset={item._canToggleSuperset ? handleToggleSuperset : undefined}
                 onRemoveExercise={handleRemoveExercise}
+                onUpdateNotes={handleUpdateNotes}
                 notes={item.notes}
+                alternativas={item.alternativas}
+                onSwitchAlternative={handleSwitchAlternative}
                 isSuperset={item._isSuperset}
                 supersetPosition={item._supersetPosition}
                 isSupersetLinkedWithNext={item._linkedWithNext}
             />
         );
-    }, [handleAddSet, handleUpdateSet, handleToggleSet, handleChangeSetType, handleFillFromPR, handleShowExercisePicker, handleOpenExerciseDetail, handleRemoveSet, handleToggleSuperset, handleRemoveExercise]);
+    }, [handleAddSet, handleUpdateSet, handleToggleSet, handleChangeSetType, handleFillFromPR, handleShowExercisePicker, handleOpenExerciseDetail, handleRemoveSet, handleToggleSuperset, handleRemoveExercise, handleUpdateNotes, handleSwitchAlternative]);
 
     // Key extractor
     const keyExtractor = useCallback((item: any) => item.id, []);
@@ -412,6 +420,8 @@ export const WorkoutBottomSheet = () => {
         removeExercise,
         removeSet,
         toggleSuperset,
+        updateExerciseNotes,
+        switchAlternative,
         getStartedAt,
         updateWorkoutName,
     } = useWorkoutActions(); // Stable functions (never re-render)
@@ -839,6 +849,8 @@ export const WorkoutBottomSheet = () => {
                                 handleRemoveSet={removeSet}
                                 handleToggleSuperset={handleToggleSuperset}
                                 handleRemoveExercise={removeExercise}
+                                handleUpdateNotes={updateExerciseNotes}
+                                handleSwitchAlternative={switchAlternative}
                                 handleAddExercise={handleAddExercise}
                                 handleCancel={handleCancel}
                                 handleShowExercisePicker={handleShowExercisePicker}
@@ -865,16 +877,17 @@ export const WorkoutBottomSheet = () => {
                         onDiscardWorkout={handleDiscardWorkout}
                     />
 
-                    {/* Uma única instância do picker (em vez de N dentro de cada ExerciseCard) */}
-                    <ExercisePickerModal
-                        visible={exercisePickerForId !== null}
-                        onClose={handleCloseExercisePicker}
-                        onSelect={handlePickerSelectExercise}
-                        currentExerciseName={pickerCurrentExerciseName}
-                    />
                 </BottomSheet>
 
                 <CustomKeyboard />
+
+                {/* Exercise Picker Modal - FORA do BottomSheet para evitar bug de overlay */}
+                <ExercisePickerModal
+                    visible={exercisePickerForId !== null}
+                    onClose={handleCloseExercisePicker}
+                    onSelect={handlePickerSelectExercise}
+                    currentExerciseName={pickerCurrentExerciseName}
+                />
 
                 {/* Exercise Detail Modal */}
                 <ExerciseDetailModal

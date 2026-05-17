@@ -81,29 +81,43 @@ export const KeyboardProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // Scroll para manter input visível acima do teclado
     const KEYBOARD_TOTAL_HEIGHT = 60 * 4 + 24 + 12 + 44; // rows + gaps + bottom inset approx
+    const scrollTimerRef = useRef<NodeJS.Timeout | null>(null);
+
     const scrollToInput = useCallback((inputId: string) => {
         const inputEl = inputRefRegistry.current.get(inputId);
         const list = scrollRef.current;
         if (!inputEl || !list) return;
 
-        setTimeout(() => {
-            requestAnimationFrame(() => {
-                try {
-                    inputEl.measureInWindow?.((x: number, y: number, width: number, height: number) => {
-                        if (y === 0 && height === 0) return; // unmounted
-                        const screenHeight = Dimensions.get('window').height;
-                        const keyboardTop = screenHeight - KEYBOARD_TOTAL_HEIGHT;
-                        const inputBottom = y + height + 20; // 20px margem
+        // Cancela scroll anterior pendente (evita sobreposições)
+        if (scrollTimerRef.current) {
+            clearTimeout(scrollTimerRef.current);
+        }
 
-                        if (inputBottom > keyboardTop) {
-                            const scrollAmount = inputBottom - keyboardTop;
-                            const currentOffset = list._currentOffset || 0;
-                            list.scrollToOffset?.({ offset: currentOffset + scrollAmount, animated: true });
-                        }
-                    });
-                } catch {}
-            });
-        }, 100);
+        scrollTimerRef.current = setTimeout(() => {
+            scrollTimerRef.current = null;
+            try {
+                // measureInWindow dá posição absoluta na tela
+                // Usamos isso + offset ATUAL do scroll pra calcular posição absoluta no conteúdo
+                // Depois calculamos o offset necessário pra input ficar acima do teclado
+                inputEl.measureInWindow?.((x: number, y: number, width: number, height: number) => {
+                    if (y === 0 && height === 0) return; // unmounted
+                    const screenHeight = Dimensions.get('window').height;
+                    const keyboardTop = screenHeight - KEYBOARD_TOTAL_HEIGHT;
+                    const inputBottom = y + height + 20; // 20px margem
+
+                    if (inputBottom > keyboardTop) {
+                        // Delta = quanto o input está abaixo do teclado (na tela)
+                        // Simplesmente somar delta ao offset real do scroll
+                        const delta = inputBottom - keyboardTop;
+                        // Ler offset real do nativeEvent via _currentOffset (atualizado pelo onScroll handler)
+                        const currentOffset = list._currentOffset ?? 0;
+                        const targetOffset = currentOffset + delta;
+                        // Desabilita animated pra evitar race conditions entre scrolls animados
+                        list.scrollToOffset?.({ offset: targetOffset, animated: false });
+                    }
+                });
+            } catch {}
+        }, 150);
     }, []);
 
     const openKeyboard = useCallback((id: string, initialValue: string, onChange: (val: string) => void, onHide?: () => void, inputStep: number = 1) => {
